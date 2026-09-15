@@ -10,6 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   :root{
+    color-scheme:dark;
     --bg:#1A1D18; --surface:#23271F; --raised:#2C3128; --line:#3A4034;
     --ink:#E8E3D0; --muted:#9A9C8A; --brass:#C9A24A; --blue:#7FB3D5; --rust:#C2553B; --green:#8DB36A;
     --radius:4px;
@@ -19,6 +20,7 @@
   a{color:var(--blue);text-decoration:none}
   a:hover{text-decoration:underline}
   button,select,input{font:inherit;color:inherit}
+  select option{background:var(--raised);color:var(--ink)}
   button{cursor:pointer}
   :focus-visible{outline:2px solid var(--brass);outline-offset:2px}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
