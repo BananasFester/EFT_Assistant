@@ -52,6 +52,7 @@
   .quest.prereq{border-left:3px solid var(--blue);background:rgba(127,179,213,.08)}
   .quest.prereq.sel{border-left:3px solid var(--brass)}
   .tag.req{color:var(--blue);border-color:rgba(127,179,213,.5)}
+  .tag.locked{color:var(--rust);border-color:rgba(194,85,59,.5)}
   .btn.on{border-color:var(--brass);color:var(--brass)}
   .qrow{display:grid;grid-template-columns:28px minmax(0,1fr) auto 30px;gap:8px;align-items:center;padding:7px 10px}
   .eye{background:transparent;border:0;color:var(--muted);font-size:18px;padding:2px 4px;border-radius:3px;line-height:1}
@@ -189,6 +190,7 @@
   <button data-tab="hideout">Hideout</button>
   <button data-tab="ammo">Ammo</button>
   <button data-tab="barters">Barters</button>
+  <button data-tab="profile">Profile</button>
 </nav>
 
 <main>
@@ -272,6 +274,20 @@
     <div id="blist"><div class="empty">Loading barter data…</div></div>
   </section>
 
+  <section class="full panel" data-panel="profile">
+    <div class="hcard" style="max-width:360px">
+      <div class="hhead">
+        <div class="hname">Character</div>
+      </div>
+      <div class="hbody">
+        <label class="small" for="plevel">Player level</label><br>
+        <input id="plevel" type="number" min="1" max="79" class="btn" style="width:110px;margin-top:6px" placeholder="e.g. 25" aria-label="Player level">
+        <p class="note">Sets an "Up to my level" option in the quest level filter, and flags trader cash offers whose loyalty level you haven't reached yet (trader loyalty needs both a player level and reputation — reputation isn't tracked here, so this only checks the level part).</p>
+      </div>
+    </div>
+    <div id="traderLevels" style="margin-top:16px"></div>
+  </section>
+
   <aside class="kit" id="kit">
     <h2>Shopping list</h2>
     <div class="total" id="total">Nothing selected</div>
@@ -317,6 +333,7 @@ let prereqMode=false, highlightSet=new Set();
 let hideoutStations=[], hideoutById={}, hideoutLevel={}, hideoutSel=new Set(), hflags=new Set();
 let barters=[], ammoItems=[], bflags=new Set();
 let currentTab='quests';
+let profileLevel=0, traderLevelReq={};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const rub=n=>n==null?'—':'₽'+Math.round(n).toLocaleString();
@@ -333,11 +350,12 @@ function load(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 selected=new Set(load('tqp.sel',[])); hidden=new Set(load('tqp.hidden',[])); mode=load('tqp.mode','regular');
 hideoutLevel=load('tqp.hlvl',{}); hideoutSel=new Set(load('tqp.hsel',[])); currentTab=load('tqp.tab','quests');
+profileLevel=+load('tqp.level',0)||0;
 
 // Progress save/load to a local file, since localStorage doesn't move between browsers or survive a cache clear
 function downloadSave(){
   const data={app:'EFT Assistant',version:1,savedAt:new Date().toISOString(),
-    mode,selected:[...selected],hidden:[...hidden],hideoutLevel,hideoutSel:[...hideoutSel]};
+    mode,selected:[...selected],hidden:[...hidden],hideoutLevel,hideoutSel:[...hideoutSel],profileLevel};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -353,10 +371,13 @@ function applySave(data){
   selected=new Set(data.selected||[]); hidden=new Set(data.hidden||[]);
   hideoutLevel=(data.hideoutLevel&&typeof data.hideoutLevel==='object')?data.hideoutLevel:{};
   hideoutSel=new Set(data.hideoutSel||[]);
+  profileLevel=+data.profileLevel||0;
   save('tqp.sel',[...selected]); save('tqp.hidden',[...hidden]); save('tqp.mode',mode);
-  save('tqp.hlvl',hideoutLevel); save('tqp.hsel',[...hideoutSel]);
+  save('tqp.hlvl',hideoutLevel); save('tqp.hsel',[...hideoutSel]); save('tqp.level',profileLevel);
   document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.mode===mode));
-  if(modeChanged)fetchTasks(); else{render();if(currentTab==='hideout')renderHideoutList();}
+  if($('#plevel'))$('#plevel').value=profileLevel||'';
+  refreshLevelSelect();
+  if(modeChanged)fetchTasks(); else{render();if(currentTab==='hideout')renderHideoutList();if(currentTab==='ammo')renderAmmo();if(currentTab==='barters')renderBarters();if(currentTab==='profile')renderProfile();}
 }
 
 function useData(list,when,fromCache){
@@ -408,7 +429,7 @@ async function fetchJsonTasks(){
     return itemCache[id]={id,name:tx(raw.name),shortName:tx(raw.shortName),iconLink:raw.iconLink,link:raw.link,wikiLink:raw.wikiLink,avg24hPrice:raw.avg24hPrice,lastLowPrice:raw.lastLowPrice,types:raw.types||[],properties:raw.properties||null,
       buyFor:(raw.buyFromTrader||[]).map(o=>{const t=traders[o.trader]||{};return {priceRUB:o.priceRUB,vendor:{name:tx(t.name)||'Trader',normalizedName:t.normalizedName||'trader',minTraderLevel:o.minTraderLevel}}})};};
   const mapObj=ref=>{const m=maps[rid(ref)];return m?{name:tx(m.name),normalizedName:m.normalizedName}:null};
-  const trader=ref=>({name:tx(traders[rid(ref)]?.name)||'Unknown'});
+  const trader=ref=>{const tr=traders[rid(ref)];return {name:tx(tr?.name)||'Unknown',normalizedName:tr?.normalizedName||''}};
   const keys2=arr=>(arr||[]).map(alt=>(Array.isArray(alt)?alt:[alt]).map(item).filter(Boolean)).filter(a=>a.length);
   const list=Object.values(rawTasks).map(t=>({
     id:t.id,name:tx(t.name),normalizedName:t.normalizedName,minPlayerLevel:t.minPlayerLevel,experience:t.experience||0,wikiLink:t.wikiLink,
@@ -428,6 +449,13 @@ async function fetchJsonTasks(){
       traderStanding:(t.finishRewards?.traderStanding||[]).map(r=>({trader:trader(r.trader),standing:r.standing}))}
   }));
   if(!list.length)throw new Error('json.tarkov.dev returned no quests');
+
+  traderLevelReq={};
+  Object.values(traders).forEach(t=>{
+    if(!t.normalizedName)return;
+    const levels={}; (t.levels||[]).forEach(l=>{levels[l.level]=l.requiredPlayerLevel});
+    traderLevelReq[t.normalizedName]={name:tx(t.name)||t.normalizedName,levels};
+  });
 
   const rawHideout=ho.data;
   const hideoutBuilt=Object.values(rawHideout).map(s=>({
@@ -492,17 +520,35 @@ async function fetchTasks(attempt=1){
 }
 function JSONstringifyLite(o){return JSON.stringify(o)}
 
-// Best price: cheapest of flea avg and trader cash offers
+// Loyalty level N of a trader requires a minimum player level to unlock; look that up
+function traderReqLevel(normalizedName,ll){
+  const t=traderLevelReq[normalizedName];
+  return t?(t.levels[ll]??null):null;
+}
+
+// Best price: cheapest of flea avg and trader cash offers you can currently access at your profile level
 function price(it){
   const offers=(it.buyFor||[]).filter(o=>o.priceRUB>0);
-  const trader=offers.filter(o=>o.vendor.normalizedName!=='flea-market').sort((a,b)=>a.priceRUB-b.priceRUB)[0];
+  const traderOffers=offers.filter(o=>o.vendor.normalizedName!=='flea-market').sort((a,b)=>a.priceRUB-b.priceRUB);
+  const cheapestTrader=traderOffers[0];
+  const trader=profileLevel>0
+    ? traderOffers.find(o=>{const req=traderReqLevel(o.vendor.normalizedName,o.vendor.minTraderLevel||1);return req==null||profileLevel>=req})
+    : cheapestTrader;
   const t=tm[it.id];
   const flea=t?t.avg:(it.avg24hPrice||it.lastLowPrice||null);
   let best=null,src='';
   if(flea){best=flea;src=t?'Flea avg (Tarkov Market)':'Flea avg'}
   if(trader&&(best==null||trader.priceRUB<best)){best=trader.priceRUB;src=`${trader.vendor.name} LL${trader.vendor.minTraderLevel||1}`}
-  return {best,src,flea,trader};
+  let locked=null;
+  if(profileLevel>0&&cheapestTrader&&cheapestTrader!==trader){
+    const req=traderReqLevel(cheapestTrader.vendor.normalizedName,cheapestTrader.vendor.minTraderLevel||1);
+    if(req!=null&&profileLevel<req&&(best==null||cheapestTrader.priceRUB<best)){
+      locked={trader:cheapestTrader.vendor.name,level:cheapestTrader.vendor.minTraderLevel||1,reqLevel:req,price:cheapestTrader.priceRUB};
+    }
+  }
+  return {best,src,flea,trader,locked};
 }
+const lockedTag=p=>p.locked?`<span class="tag locked" title="Cheaper (${rub(p.locked.price)}) at ${esc(p.locked.trader)} LL${p.locked.level}, needs player level ${p.locked.reqLevel}">🔒 Lv ${p.locked.reqLevel}</span>`:'';
 
 // Extract keys, markers, hand-ins, quest items and locations for one task
 function buildKit(t){
@@ -531,6 +577,7 @@ function fillSelects(){
   const maps=[...new Set(tasks.flatMap(t=>Object.keys(t.kit.maps)))].sort();
   $('#trader').innerHTML='<option value="">All traders</option>'+traders.map(x=>`<option>${esc(x)}</option>`).join('');
   $('#mapf').innerHTML='<option value="">All maps</option>'+maps.map(x=>`<option>${esc(x)}</option>`).join('');
+  refreshLevelSelect();
 }
 
 function visible(){
@@ -620,7 +667,7 @@ function detail(t){
     </div></div>`;
 }
 function pin(o,norm){const ids=(o.zones||[]).map(z=>z.id).filter(Boolean);if(!ids.length&&o.type==='findQuestItem'&&o.questItem?.id)ids.push(o.questItem.id);return ids.length&&norm?`https://tarkov.dev/map/${esc(norm)}?q=${ids.map(encodeURIComponent).join(',')}`:'';}
-function keyLine(it,label){const p=price(it);return `<li>${esc(label)} <a href="${esc(it.link||it.wikiLink||'#')}" target="_blank" rel="noopener">${esc(it.name)}</a> <span class="small">${p.best?rub(p.best)+' · '+esc(p.src):'no price data'}</span></li>`}
+function keyLine(it,label){const p=price(it);return `<li>${esc(label)} <a href="${esc(it.link||it.wikiLink||'#')}" target="_blank" rel="noopener">${esc(it.name)}</a> <span class="small">${p.best?rub(p.best)+' · '+esc(p.src):'no price data'}</span> ${lockedTag(p)}</li>`}
 
 function renderKit(){
   const sel=[...selected].map(id=>byId[id]).filter(Boolean);
@@ -643,7 +690,7 @@ function renderKit(){
     });
   });
   const row=(it,sub,qty,cls='')=>{const p=price(it);const line=p.best?rub(p.best*(qty||1)):'—';if(p.best)total+=p.best*(qty||1);
-    return `<div class="item ${cls}">${it.iconLink?`<img src="${esc(it.iconLink)}" alt="">`:'<span></span>'}<div><div class="iname"><a href="${esc(it.link||it.wikiLink||'#')}" target="_blank" rel="noopener">${esc(it.name)}</a></div><div class="isub">${sub}</div></div><div class="iprice"><b>${line}</b>${p.best?esc(p.src):'no price'}</div></div>`};
+    return `<div class="item ${cls}">${it.iconLink?`<img src="${esc(it.iconLink)}" alt="">`:'<span></span>'}<div><div class="iname"><a href="${esc(it.link||it.wikiLink||'#')}" target="_blank" rel="noopener">${esc(it.name)}</a></div><div class="isub">${sub}</div></div><div class="iprice"><b>${line}</b>${p.best?esc(p.src):'no price'} ${lockedTag(p)}</div></div>`};
   let h='';
   const K=Object.values(keys);
   if(K.length)h+=`<h3>Keys <span>${K.length}</span></h3>`+K.map(k=>row(k.item,esc(k.quests.join(', '))+(k.alt?' · one of several works':''),1,'keyrow')).join('');
@@ -699,7 +746,7 @@ function hideoutCard(s){
   let body;
   if(next){
     const cost=next.itemRequirements.reduce((a,r)=>a+(price(r.item).best||0)*r.count,0);
-    const items=next.itemRequirements.map(r=>{const p=price(r.item);return `<li>${r.count}× <a href="${esc(r.item.link||r.item.wikiLink||'#')}" target="_blank" rel="noopener">${esc(r.item.name)}</a>${r.fir?' <span class="fir">FIR</span>':''} <span class="small">${p.best?rub(p.best*r.count)+' · '+esc(p.src):'no price data'}</span></li>`}).join('');
+    const items=next.itemRequirements.map(r=>{const p=price(r.item);return `<li>${r.count}× <a href="${esc(r.item.link||r.item.wikiLink||'#')}" target="_blank" rel="noopener">${esc(r.item.name)}</a>${r.fir?' <span class="fir">FIR</span>':''} <span class="small">${p.best?rub(p.best*r.count)+' · '+esc(p.src):'no price data'}</span> ${lockedTag(p)}</li>`}).join('');
     const reqTags=[...next.traderRequirements.map(r=>`<span class="tag">${esc(r.trader.name)} LL${r.value}</span>`),
       ...next.skillRequirements.map(r=>`<span class="tag">${esc(r.skill)} ${r.level}</span>`),
       ...next.stationLevelRequirements.map(r=>`<span class="tag ${curLvl(r.stationId)>=r.level?'met':'unmet'}">${esc(r.stationName)} L${r.level}</span>`)].join('');
@@ -748,7 +795,7 @@ function renderAmmo(){
   $('#acount').textContent=`${list.length} rounds`;
   $('#atbl').innerHTML=`<thead><tr><th>Name</th><th>Caliber</th><th class="num">Dmg</th><th class="num">Pen</th><th class="num">Armor dmg</th><th class="num">Frag%</th><th class="num">Speed m/s</th><th class="num">Price</th></tr></thead><tbody>${list.map(a=>{
     const p=price(a);
-    return `<tr><td>${a.iconLink?`<img src="${esc(a.iconLink)}" alt="">`:''}<a href="${esc(a.link||a.wikiLink||'#')}" target="_blank" rel="noopener">${esc(a.name)}</a>${a.ammo.tracer?' <span class="small">●tracer</span>':''}</td><td>${esc(calName(a.ammo.caliber))}</td><td class="num">${a.ammo.damage}</td><td class="num">${a.ammo.penetrationPower}</td><td class="num">${a.ammo.armorDamage}</td><td class="num">${Math.round((a.ammo.fragmentationChance||0)*100)}%</td><td class="num">${a.ammo.initialSpeed}</td><td class="num">${p.best?rub(p.best):'—'}</td></tr>`;
+    return `<tr><td>${a.iconLink?`<img src="${esc(a.iconLink)}" alt="">`:''}<a href="${esc(a.link||a.wikiLink||'#')}" target="_blank" rel="noopener">${esc(a.name)}</a>${a.ammo.tracer?' <span class="small">●tracer</span>':''}</td><td>${esc(calName(a.ammo.caliber))}</td><td class="num">${a.ammo.damage}</td><td class="num">${a.ammo.penetrationPower}</td><td class="num">${a.ammo.armorDamage}</td><td class="num">${Math.round((a.ammo.fragmentationChance||0)*100)}%</td><td class="num">${a.ammo.initialSpeed}</td><td class="num">${p.best?rub(p.best):'—'} ${lockedTag(p)}</td></tr>`;
   }).join('')}</tbody>`;
 }
 
@@ -784,10 +831,12 @@ function renderBarters(){
   $('#blist').innerHTML=list.length?list.map(({b,calc})=>{
     const req=b.requiredItems.map(r=>`<li>${r.count}× <a href="${esc(r.item.link||r.item.wikiLink||'#')}" target="_blank" rel="noopener">${esc(r.item.name)}</a></li>`).join('');
     const profCls=calc.profit==null?'':(calc.profit>0?'profit-pos':'profit-neg');
+    const reqLvl=traderReqLevel(b.trader.normalizedName,b.minTraderLevel||1);
+    const barterLocked=profileLevel>0&&reqLvl!=null&&profileLevel<reqLvl;
     return `<div class="item" style="align-items:flex-start">
       ${b.offeredItem.item.iconLink?`<img src="${esc(b.offeredItem.item.iconLink)}" alt="">`:'<span></span>'}
       <div><div class="iname">${b.offeredItem.count}× <a href="${esc(b.offeredItem.item.link||b.offeredItem.item.wikiLink||'#')}" target="_blank" rel="noopener">${esc(b.offeredItem.item.name)}</a></div>
-        <div class="isub">${esc(b.trader.name)} LL${b.minTraderLevel||1}${b.taskUnlockName?` · requires ${esc(b.taskUnlockName)}`:''}</div>
+        <div class="isub">${esc(b.trader.name)} LL${b.minTraderLevel||1}${barterLocked?` <span class="tag locked">🔒 needs Lv ${reqLvl}</span>`:''}${b.taskUnlockName?` · requires ${esc(b.taskUnlockName)}`:''}</div>
         <ul style="margin:4px 0 0;padding-left:18px">${req}</ul></div>
       <div class="iprice"><b class="${profCls}">${calc.profit!=null?rub(calc.profit):'—'}</b>${calc.cost!=null?'cost '+rub(calc.cost):'no price'}</div>
     </div>`;
@@ -799,12 +848,46 @@ function switchTab(t){
   currentTab=t; save('tqp.tab',t);
   document.querySelectorAll('#tabbar button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on',p.dataset.panel===t));
-  const full=t==='ammo'||t==='barters';
+  const full=t==='ammo'||t==='barters'||t==='profile';
   document.querySelector('main').classList.toggle('full',full);
   $('#kit').style.display=full?'none':'';
   if(t==='hideout')renderHideoutList();
   if(t==='ammo')renderAmmo();
   if(t==='barters')renderBarters();
+  if(t==='profile')renderProfile();
+}
+
+function renderProfile(){
+  $('#plevel').value=profileLevel||'';
+  const wrap=$('#traderLevels');
+  const names=Object.keys(traderLevelReq);
+  if(!names.length){wrap.innerHTML='<p class="note">Trader loyalty data loads together with quest data.</p>';return;}
+  names.sort((a,b)=>traderLevelReq[a].name.localeCompare(traderLevelReq[b].name));
+  wrap.innerHTML=`<h3 style="border-bottom:1px solid var(--line);padding-bottom:4px;font-family:'Barlow Condensed';font-weight:600;font-size:18px">Trader loyalty levels</h3>
+    <div class="tblwrap"><table class="datatbl"><thead><tr><th>Trader</th><th class="num">LL1</th><th class="num">LL2</th><th class="num">LL3</th><th class="num">LL4</th></tr></thead><tbody>${
+      names.map(n=>{
+        const levels=traderLevelReq[n].levels;
+        const cells=[1,2,3,4].map(ll=>{
+          const req=levels[ll];
+          if(req==null)return '<td class="num">—</td>';
+          const unlocked=profileLevel>0&&profileLevel>=req;
+          return `<td class="num" style="color:${unlocked?'var(--green)':'var(--muted)'}">Lv ${req}${unlocked?' ✓':''}</td>`;
+        }).join('');
+        return `<tr><td>${esc(traderLevelReq[n].name)}</td>${cells}</tr>`;
+      }).join('')
+    }</tbody></table></div>`;
+}
+
+function levelSelectHTML(){
+  let opts='<option value="">Any level</option>';
+  if(profileLevel>0)opts+=`<option value="${profileLevel}">Up to my level (${profileLevel})</option>`;
+  opts+='<option value="10">Up to level 10</option><option value="20">Up to level 20</option><option value="30">Up to level 30</option><option value="40">Up to level 40</option>';
+  return opts;
+}
+function refreshLevelSelect(){
+  const sel=$('#lvl'); const cur=sel.value;
+  sel.innerHTML=levelSelectHTML();
+  if([...sel.options].some(o=>o.value===cur))sel.value=cur;
 }
 
 // ---------- In-app map viewer (only the selected quests) ----------
@@ -966,6 +1049,14 @@ $('#copy').addEventListener('click',()=>{
 document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.mode===mode));
 $('#tmkey').value=load('tqp.tmkey','');
 $('#tmkey').addEventListener('change',()=>{try{localStorage.removeItem('tqp.tm.'+mode)}catch(e){};if(tasks.length)fetchTM();});
+$('#plevel').addEventListener('input',()=>{
+  profileLevel=+$('#plevel').value||0; save('tqp.level',profileLevel);
+  refreshLevelSelect(); render();
+  if(currentTab==='ammo')renderAmmo();
+  if(currentTab==='barters')renderBarters();
+  if(currentTab==='profile')renderProfile();
+});
+refreshLevelSelect();
 switchTab(currentTab);
 fetchTasks();
 </script>
