@@ -333,7 +333,7 @@ let prereqMode=false, highlightSet=new Set();
 let hideoutStations=[], hideoutById={}, hideoutLevel={}, hideoutSel=new Set(), hflags=new Set();
 let barters=[], ammoItems=[], bflags=new Set();
 let currentTab='quests';
-let profileLevel=0, traderLevelReq={};
+let profileLevel=0, traderLevelReq={}, traderLoyalty={};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const rub=n=>n==null?'—':'₽'+Math.round(n).toLocaleString();
@@ -350,12 +350,12 @@ function load(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 selected=new Set(load('tqp.sel',[])); hidden=new Set(load('tqp.hidden',[])); mode=load('tqp.mode','regular');
 hideoutLevel=load('tqp.hlvl',{}); hideoutSel=new Set(load('tqp.hsel',[])); currentTab=load('tqp.tab','quests');
-profileLevel=+load('tqp.level',0)||0;
+profileLevel=+load('tqp.level',0)||0; traderLoyalty=load('tqp.trll',{});
 
 // Progress save/load to a local file, since localStorage doesn't move between browsers or survive a cache clear
 function downloadSave(){
   const data={app:'EFT Assistant',version:1,savedAt:new Date().toISOString(),
-    mode,selected:[...selected],hidden:[...hidden],hideoutLevel,hideoutSel:[...hideoutSel],profileLevel};
+    mode,selected:[...selected],hidden:[...hidden],hideoutLevel,hideoutSel:[...hideoutSel],profileLevel,traderLoyalty};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -372,8 +372,9 @@ function applySave(data){
   hideoutLevel=(data.hideoutLevel&&typeof data.hideoutLevel==='object')?data.hideoutLevel:{};
   hideoutSel=new Set(data.hideoutSel||[]);
   profileLevel=+data.profileLevel||0;
+  traderLoyalty=(data.traderLoyalty&&typeof data.traderLoyalty==='object')?data.traderLoyalty:{};
   save('tqp.sel',[...selected]); save('tqp.hidden',[...hidden]); save('tqp.mode',mode);
-  save('tqp.hlvl',hideoutLevel); save('tqp.hsel',[...hideoutSel]); save('tqp.level',profileLevel);
+  save('tqp.hlvl',hideoutLevel); save('tqp.hsel',[...hideoutSel]); save('tqp.level',profileLevel); save('tqp.trll',traderLoyalty);
   document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.mode===mode));
   if($('#plevel'))$('#plevel').value=profileLevel||'';
   refreshLevelSelect();
@@ -520,19 +521,25 @@ async function fetchTasks(attempt=1){
 }
 function JSONstringifyLite(o){return JSON.stringify(o)}
 
-// Loyalty level N of a trader requires a minimum player level to unlock; look that up
-function traderReqLevel(normalizedName,ll){
-  const t=traderLevelReq[normalizedName];
-  return t?(t.levels[ll]??null):null;
+// Best loyalty level your profile level alone would unlock, used as a default until you set one explicitly
+function computedLL(normalizedName){
+  const t=traderLevelReq[normalizedName]; if(!t)return 1;
+  const lvls=Object.keys(t.levels).map(Number).filter(l=>l>0).sort((a,b)=>a-b);
+  let ll=lvls[0]||1;
+  lvls.forEach(l=>{if((t.levels[l]??0)<=profileLevel)ll=l});
+  return ll;
 }
+// Your actual loyalty level: explicit override if you set one (loyalty also needs reputation, which can lag your level), else the level-based guess
+const effectiveLL=normalizedName=>traderLoyalty[normalizedName]??computedLL(normalizedName);
+const hasProfile=()=>profileLevel>0||Object.keys(traderLoyalty).length>0;
 
-// Best price: cheapest of flea avg and trader cash offers you can currently access at your profile level
+// Best price: cheapest of flea avg and trader cash offers you can currently access at your loyalty level
 function price(it){
   const offers=(it.buyFor||[]).filter(o=>o.priceRUB>0);
   const traderOffers=offers.filter(o=>o.vendor.normalizedName!=='flea-market').sort((a,b)=>a.priceRUB-b.priceRUB);
   const cheapestTrader=traderOffers[0];
-  const trader=profileLevel>0
-    ? traderOffers.find(o=>{const req=traderReqLevel(o.vendor.normalizedName,o.vendor.minTraderLevel||1);return req==null||profileLevel>=req})
+  const trader=hasProfile()
+    ? traderOffers.find(o=>(o.vendor.minTraderLevel||1)<=effectiveLL(o.vendor.normalizedName))
     : cheapestTrader;
   const t=tm[it.id];
   const flea=t?t.avg:(it.avg24hPrice||it.lastLowPrice||null);
@@ -540,15 +547,15 @@ function price(it){
   if(flea){best=flea;src=t?'Flea avg (Tarkov Market)':'Flea avg'}
   if(trader&&(best==null||trader.priceRUB<best)){best=trader.priceRUB;src=`${trader.vendor.name} LL${trader.vendor.minTraderLevel||1}`}
   let locked=null;
-  if(profileLevel>0&&cheapestTrader&&cheapestTrader!==trader){
-    const req=traderReqLevel(cheapestTrader.vendor.normalizedName,cheapestTrader.vendor.minTraderLevel||1);
-    if(req!=null&&profileLevel<req&&(best==null||cheapestTrader.priceRUB<best)){
-      locked={trader:cheapestTrader.vendor.name,level:cheapestTrader.vendor.minTraderLevel||1,reqLevel:req,price:cheapestTrader.priceRUB};
+  if(hasProfile()&&cheapestTrader&&cheapestTrader!==trader){
+    const need=cheapestTrader.vendor.minTraderLevel||1, have=effectiveLL(cheapestTrader.vendor.normalizedName);
+    if(have<need&&(best==null||cheapestTrader.priceRUB<best)){
+      locked={trader:cheapestTrader.vendor.name,needLL:need,haveLL:have,price:cheapestTrader.priceRUB};
     }
   }
   return {best,src,flea,trader,locked};
 }
-const lockedTag=p=>p.locked?`<span class="tag locked" title="Cheaper (${rub(p.locked.price)}) at ${esc(p.locked.trader)} LL${p.locked.level}, needs player level ${p.locked.reqLevel}">🔒 Lv ${p.locked.reqLevel}</span>`:'';
+const lockedTag=p=>p.locked?`<span class="tag locked" title="Cheaper (${rub(p.locked.price)}) at ${esc(p.locked.trader)} LL${p.locked.needLL} — you're at LL${p.locked.haveLL}">🔒 LL${p.locked.needLL}</span>`:'';
 
 // Extract keys, markers, hand-ins, quest items and locations for one task
 function buildKit(t){
@@ -632,6 +639,10 @@ function renderList(){
     if(t.lightkeeperRequired)tags.push('<span class="tag lk">Lightkeeper</span>');
     if(k.cost)tags.push(`<span class="tag">${rub(k.cost)}</span>`);
     if(highlightSet.has(t.id))tags.push('<span class="tag req">Needed first</span>');
+    if(hasProfile()){
+      const trReq=t.traderRequirements.find(r=>r.requirementType==='level'&&effectiveLL(r.trader.normalizedName)<r.value);
+      if(trReq)tags.push(`<span class="tag locked">🔒 ${esc(trReq.trader.name)} LL${trReq.value}</span>`);
+    }
     return `<div class="quest ${selected.has(t.id)?'sel':''} ${open.has(t.id)?'open':''} ${hidden.has(t.id)?'hid':''} ${highlightSet.has(t.id)?'prereq':''}" data-id="${t.id}">
       <div class="qrow">
         <input type="checkbox" ${selected.has(t.id)?'checked':''} aria-label="Select ${esc(t.name)}">
@@ -831,12 +842,12 @@ function renderBarters(){
   $('#blist').innerHTML=list.length?list.map(({b,calc})=>{
     const req=b.requiredItems.map(r=>`<li>${r.count}× <a href="${esc(r.item.link||r.item.wikiLink||'#')}" target="_blank" rel="noopener">${esc(r.item.name)}</a></li>`).join('');
     const profCls=calc.profit==null?'':(calc.profit>0?'profit-pos':'profit-neg');
-    const reqLvl=traderReqLevel(b.trader.normalizedName,b.minTraderLevel||1);
-    const barterLocked=profileLevel>0&&reqLvl!=null&&profileLevel<reqLvl;
+    const haveLL=effectiveLL(b.trader.normalizedName);
+    const barterLocked=hasProfile()&&haveLL<(b.minTraderLevel||1);
     return `<div class="item" style="align-items:flex-start">
       ${b.offeredItem.item.iconLink?`<img src="${esc(b.offeredItem.item.iconLink)}" alt="">`:'<span></span>'}
       <div><div class="iname">${b.offeredItem.count}× <a href="${esc(b.offeredItem.item.link||b.offeredItem.item.wikiLink||'#')}" target="_blank" rel="noopener">${esc(b.offeredItem.item.name)}</a></div>
-        <div class="isub">${esc(b.trader.name)} LL${b.minTraderLevel||1}${barterLocked?` <span class="tag locked">🔒 needs Lv ${reqLvl}</span>`:''}${b.taskUnlockName?` · requires ${esc(b.taskUnlockName)}`:''}</div>
+        <div class="isub">${esc(b.trader.name)} LL${b.minTraderLevel||1}${barterLocked?` <span class="tag locked">🔒 you're LL${haveLL}</span>`:''}${b.taskUnlockName?` · requires ${esc(b.taskUnlockName)}`:''}</div>
         <ul style="margin:4px 0 0;padding-left:18px">${req}</ul></div>
       <div class="iprice"><b class="${profCls}">${calc.profit!=null?rub(calc.profit):'—'}</b>${calc.cost!=null?'cost '+rub(calc.cost):'no price'}</div>
     </div>`;
@@ -864,16 +875,20 @@ function renderProfile(){
   if(!names.length){wrap.innerHTML='<p class="note">Trader loyalty data loads together with quest data.</p>';return;}
   names.sort((a,b)=>traderLevelReq[a].name.localeCompare(traderLevelReq[b].name));
   wrap.innerHTML=`<h3 style="border-bottom:1px solid var(--line);padding-bottom:4px;font-family:'Barlow Condensed';font-weight:600;font-size:18px">Trader loyalty levels</h3>
-    <div class="tblwrap"><table class="datatbl"><thead><tr><th>Trader</th><th class="num">LL1</th><th class="num">LL2</th><th class="num">LL3</th><th class="num">LL4</th></tr></thead><tbody>${
+    <p class="note">Loyalty level needs both a player level and reputation, so it can lag behind what your level alone would unlock. Set each trader's actual current loyalty level below for accurate prices, barters and quest availability &mdash; it defaults to a guess based on your player level until you pick one.</p>
+    <div class="tblwrap"><table class="datatbl"><thead><tr><th>Trader</th><th>Your LL</th><th class="num">LL1</th><th class="num">LL2</th><th class="num">LL3</th><th class="num">LL4</th></tr></thead><tbody>${
       names.map(n=>{
         const levels=traderLevelReq[n].levels;
+        const tiers=Object.keys(levels).map(Number).filter(l=>l>0).sort((a,b)=>a-b);
+        const cur=effectiveLL(n), isSet=traderLoyalty[n]!=null;
+        const opts=tiers.map(l=>`<option value="${l}" ${l===cur?'selected':''}>LL${l}</option>`).join('');
         const cells=[1,2,3,4].map(ll=>{
           const req=levels[ll];
           if(req==null)return '<td class="num">—</td>';
           const unlocked=profileLevel>0&&profileLevel>=req;
           return `<td class="num" style="color:${unlocked?'var(--green)':'var(--muted)'}">Lv ${req}${unlocked?' ✓':''}</td>`;
         }).join('');
-        return `<tr><td>${esc(traderLevelReq[n].name)}</td>${cells}</tr>`;
+        return `<tr><td>${esc(traderLevelReq[n].name)}</td><td><select data-trll="${esc(n)}">${opts}</select>${isSet?' <span class="small">(set)</span>':' <span class="small">(guess)</span>'}</td>${cells}</tr>`;
       }).join('')
     }</tbody></table></div>`;
 }
@@ -1055,6 +1070,14 @@ $('#plevel').addEventListener('input',()=>{
   if(currentTab==='ammo')renderAmmo();
   if(currentTab==='barters')renderBarters();
   if(currentTab==='profile')renderProfile();
+});
+$('#traderLevels').addEventListener('change',e=>{
+  const sel=e.target.closest('[data-trll]');if(!sel)return;
+  traderLoyalty[sel.dataset.trll]=+sel.value; save('tqp.trll',traderLoyalty);
+  render();
+  if(currentTab==='ammo')renderAmmo();
+  if(currentTab==='barters')renderBarters();
+  renderProfile();
 });
 refreshLevelSelect();
 switchTab(currentTab);
