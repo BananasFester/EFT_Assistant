@@ -49,6 +49,10 @@
 
   .quest{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);margin-bottom:4px}
   .quest.sel{border-left:3px solid var(--brass)}
+  .quest.prereq{border-left:3px solid var(--blue);background:rgba(127,179,213,.08)}
+  .quest.prereq.sel{border-left:3px solid var(--brass)}
+  .tag.req{color:var(--blue);border-color:rgba(127,179,213,.5)}
+  .btn.on{border-color:var(--brass);color:var(--brass)}
   .qrow{display:grid;grid-template-columns:28px minmax(0,1fr) auto 30px;gap:8px;align-items:center;padding:7px 10px}
   .eye{background:transparent;border:0;color:var(--muted);font-size:18px;padding:2px 4px;border-radius:3px;line-height:1}
   .eye:hover{color:var(--ink);background:var(--raised)}
@@ -270,7 +274,7 @@
     <div class="total" id="total">Nothing selected</div>
     <div class="kitactions">
       <button class="btn brass" id="showMap">Map view</button>
-      <button class="btn" id="addPre">Add prerequisites</button>
+      <button class="btn" id="showPre">Show prerequisites</button>
       <button class="btn" id="copy">Copy list</button>
       <button class="btn" id="clear">Clear</button>
     </div>
@@ -306,6 +310,7 @@ const QUERY=`query Tasks($mode:GameMode){ tasks(gameMode:$mode){
 }}`;
 
 let mode='regular', tasks=[], byId={}, selected=new Set(), flags=new Set(), open=new Set(), hidden=new Set();
+let prereqMode=false, highlightSet=new Set();
 let hideoutStations=[], hideoutById={}, hideoutLevel={}, hideoutSel=new Set(), hflags=new Set();
 let barters=[], ammoItems=[], bflags=new Set();
 let currentTab='quests';
@@ -511,7 +516,7 @@ function visible(){
     if(flags.has('keys')&&!Object.keys(t.kit.keys).length)return false;
     if(flags.has('mark')&&!Object.keys(t.kit.marks).length)return false;
     if(flags.has('selected')&&!selected.has(t.id))return false;
-    if(flags.has('hidden')?!hidden.has(t.id):hidden.has(t.id))return false;
+    if(flags.has('hidden')?!hidden.has(t.id):(hidden.has(t.id)&&!highlightSet.has(t.id)))return false;
     if(q){
       const hay=[t.name,t.trader.name,...Object.values(t.kit.keys).map(k=>k.item.name),...Object.values(t.kit.hand).map(h=>h.item.name),...Object.values(t.kit.marks).map(m=>m.item.name)].join(' ').toLowerCase();
       if(!hay.includes(q))return false;
@@ -525,7 +530,21 @@ function visible(){
   return list.sort(cmp);
 }
 
+function computeHighlight(){
+  if(!prereqMode){highlightSet=new Set();return;}
+  const out=new Set(), stack=[...selected];
+  while(stack.length){
+    const t=byId[stack.pop()];if(!t)continue;
+    t.taskRequirements.forEach(r=>{
+      if(r.status.includes('complete')&&!selected.has(r.task.id)&&!out.has(r.task.id)){
+        out.add(r.task.id);stack.push(r.task.id);
+      }
+    });
+  }
+  highlightSet=out;
+}
 function renderList(){
+  computeHighlight();
   const list=visible();
   $('#count').textContent=`${list.length} shown · ${selected.size} selected · ${hidden.size} hidden`;
   if(!list.length){$('#list').innerHTML='<div class="empty">No quests match these filters.</div>';return;}
@@ -537,7 +556,8 @@ function renderList(){
     if(t.kappaRequired)tags.push('<span class="tag kappa">Kappa</span>');
     if(t.lightkeeperRequired)tags.push('<span class="tag lk">Lightkeeper</span>');
     if(k.cost)tags.push(`<span class="tag">${rub(k.cost)}</span>`);
-    return `<div class="quest ${selected.has(t.id)?'sel':''} ${open.has(t.id)?'open':''} ${hidden.has(t.id)?'hid':''}" data-id="${t.id}">
+    if(highlightSet.has(t.id))tags.push('<span class="tag req">Needed first</span>');
+    return `<div class="quest ${selected.has(t.id)?'sel':''} ${open.has(t.id)?'open':''} ${hidden.has(t.id)?'hid':''} ${highlightSet.has(t.id)?'prereq':''}" data-id="${t.id}">
       <div class="qrow">
         <input type="checkbox" ${selected.has(t.id)?'checked':''} aria-label="Select ${esc(t.name)}">
         <div><div class="qname">${esc(t.name)}</div>
@@ -889,10 +909,10 @@ $('#bchips').addEventListener('click',e=>{const c=e.target.closest('.chip');if(!
 $('#modeSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.dataset.mode===mode)return;mode=b.dataset.mode;save('tqp.mode',mode);document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x===b));fetchTasks();});
 $('#refresh').addEventListener('click',fetchTasks);
 $('#clear').addEventListener('click',()=>{selected.clear();save('tqp.sel',[]);render();});
-$('#addPre').addEventListener('click',()=>{
-  const stack=[...selected];
-  while(stack.length){const t=byId[stack.pop()];if(!t)continue;t.taskRequirements.forEach(r=>{if(r.status.includes('complete')&&!selected.has(r.task.id)&&!hidden.has(r.task.id)){selected.add(r.task.id);stack.push(r.task.id)}})}
-  save('tqp.sel',[...selected]);render();
+$('#showPre').addEventListener('click',()=>{
+  prereqMode=!prereqMode;
+  $('#showPre').classList.toggle('on',prereqMode);
+  render();
 });
 $('#copy').addEventListener('click',()=>{
   const txt=$('#kitBody').innerText.replace(/\n{3,}/g,'\n\n');
