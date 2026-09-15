@@ -134,7 +134,7 @@
   .tabbar button:hover{color:var(--ink)}
   .tabbar button.on{background:var(--raised);color:var(--ink);border-color:var(--brass)}
 
-  main.full{grid-template-columns:1fr}
+  main.full{grid-template-columns:minmax(0,1fr)}
   .panel{display:none}
   .panel.on{display:block}
   .full{padding:14px 24px 40px}
@@ -877,7 +877,9 @@ function renderProfile(){
   names.sort((a,b)=>traderLevelReq[a].name.localeCompare(traderLevelReq[b].name));
   wrap.innerHTML=`<h3 style="border-bottom:1px solid var(--line);padding-bottom:4px;font-family:'Barlow Condensed';font-weight:600;font-size:18px">Trader loyalty levels</h3>
     <p class="note">Loyalty level needs both a player level and reputation, so it can lag behind what your level alone would unlock. Set each trader's actual current loyalty level below for accurate prices, barters and quest availability &mdash; it defaults to a guess based on your player level until you pick one.</p>
-    <div class="tblwrap"><table class="datatbl"><thead><tr><th>Trader</th><th>Your LL</th><th class="num">LL1</th><th class="num">LL2</th><th class="num">LL3</th><th class="num">LL4</th></tr></thead><tbody>${
+    <div class="tblwrap" style="max-width:640px"><table class="datatbl" style="table-layout:fixed">
+      <colgroup><col style="width:170px"><col style="width:140px"><col style="width:60px"><col style="width:60px"><col style="width:60px"><col style="width:60px"></colgroup>
+      <thead><tr><th>Trader</th><th>Your LL</th><th class="num">LL1</th><th class="num">LL2</th><th class="num">LL3</th><th class="num">LL4</th></tr></thead><tbody>${
       names.map(n=>{
         const levels=traderLevelReq[n].levels;
         const tiers=Object.keys(levels).map(Number).filter(l=>l>0).sort((a,b)=>a-b);
