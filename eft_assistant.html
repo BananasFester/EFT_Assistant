@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tarkov quest planner</title>
+<title>EFT Assistant</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -123,13 +123,48 @@
   .leaflet-control-attribution{background:rgba(26,29,24,.8)!important;color:var(--muted)!important;font-size:10px}
   .leaflet-control-attribution a{color:var(--blue)!important}
   @media (max-width:760px){.legend{display:none}}
+
+  .tabbar{display:flex;gap:6px;padding:10px 24px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .tabbar button{background:transparent;border:1px solid var(--line);border-radius:999px;padding:6px 16px;color:var(--muted);font-family:"Barlow Condensed";font-weight:600;font-size:15px;letter-spacing:.02em}
+  .tabbar button:hover{color:var(--ink)}
+  .tabbar button.on{background:var(--raised);color:var(--ink);border-color:var(--brass)}
+
+  main.full{grid-template-columns:1fr}
+  .panel{display:none}
+  .panel.on{display:block}
+  .full{padding:14px 24px 40px}
+  .filters3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:10px}
+  @media (max-width:760px){.filters3{grid-template-columns:1fr 1fr}}
+  .filters3 input,.filters3 select{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px}
+
+  .hcard{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);margin-bottom:8px;padding:10px 14px}
+  .hhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .hicon{width:40px;height:40px;object-fit:contain;background:var(--raised);border-radius:3px}
+  .hname{font-family:"Barlow Condensed";font-weight:600;font-size:20px}
+  .hlevel{color:var(--muted);font-size:13px;margin-left:auto}
+  .hlevel select{background:var(--raised);border:1px solid var(--line);border-radius:3px;padding:3px 6px;margin-left:4px}
+  .hmax{color:var(--green);font-weight:600;font-size:13px}
+  .hbody{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+  .hreq{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+  .hreq .tag.unmet{color:var(--rust);border-color:rgba(194,85,59,.5)}
+  .hreq .tag.met{color:var(--green);border-color:rgba(141,179,106,.5)}
+  .hplan{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+
+  table.datatbl{width:100%;border-collapse:collapse;font-size:14px}
+  table.datatbl th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;letter-spacing:.03em;text-transform:uppercase;border-bottom:1px solid var(--line);padding:6px 8px;white-space:nowrap}
+  table.datatbl td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+  table.datatbl img{width:26px;height:26px;object-fit:contain;vertical-align:middle;margin-right:6px;background:var(--raised);border-radius:3px}
+  .tblwrap{overflow-x:auto}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .iprice b.profit-pos{color:var(--green)}
+  .iprice b.profit-neg{color:var(--rust)}
 </style>
 </head>
 <body>
 <header>
   <div>
-    <h1>Tarkov quest planner</h1>
-    <p class="sub">Pick the quests you're working on and get one kit list: keys, markers, hand-in items and where to go. Live data and prices from tarkov.dev.</p>
+    <h1>EFT Assistant</h1>
+    <p class="sub">Your Tarkov copilot: plan quests, track hideout upgrades, check ammo penetration and find profitable barters, with one combined shopping list and live prices from tarkov.dev.</p>
   </div>
   <div class="toolbar">
     <div class="seg" id="modeSeg">
@@ -142,8 +177,15 @@
   </div>
 </header>
 
+<nav class="tabbar" id="tabbar">
+  <button data-tab="quests" class="on">Quests</button>
+  <button data-tab="hideout">Hideout</button>
+  <button data-tab="ammo">Ammo</button>
+  <button data-tab="barters">Barters</button>
+</nav>
+
 <main>
-  <section class="left">
+  <section class="left panel on" data-panel="quests">
     <div class="filters">
       <input id="q" placeholder="Search quest, item or key name" aria-label="Search">
       <select id="trader"><option value="">All traders</option></select>
@@ -173,8 +215,58 @@
     <div id="list"><div class="empty">Fetching quest data…</div></div>
   </section>
 
+  <section class="left panel" data-panel="hideout">
+    <div class="filters3">
+      <input id="hq" placeholder="Search station name" aria-label="Search hideout stations">
+      <select id="hsort">
+        <option value="name">Sort: name</option>
+        <option value="level">Sort: current level (high)</option>
+        <option value="cost">Sort: next level cost (high)</option>
+      </select>
+    </div>
+    <div class="chips" id="hchips">
+      <button class="chip" data-f="ready">Ready to build</button>
+      <button class="chip" data-f="planned">Planned only</button>
+      <button class="chip" data-f="maxed">Maxed out</button>
+      <span class="count" id="hcount"></span>
+    </div>
+    <div id="hlist"><div class="empty">Loading hideout data…</div></div>
+  </section>
+
+  <section class="full panel" data-panel="ammo">
+    <div class="filters3">
+      <input id="aq" placeholder="Search ammo name" aria-label="Search ammo">
+      <select id="acal"><option value="">All calibers</option></select>
+      <select id="asort">
+        <option value="pen">Sort: penetration (high)</option>
+        <option value="dmg">Sort: damage (high)</option>
+        <option value="price">Sort: price (low)</option>
+        <option value="name">Sort: name</option>
+      </select>
+    </div>
+    <div class="small" id="acount" style="margin-bottom:8px">Loading ammo data…</div>
+    <div class="tblwrap"><table class="datatbl" id="atbl"></table></div>
+  </section>
+
+  <section class="full panel" data-panel="barters">
+    <div class="filters3">
+      <input id="bq" placeholder="Search item name" aria-label="Search barters">
+      <select id="btrader"><option value="">All traders</option></select>
+      <select id="bsort">
+        <option value="profit">Sort: profit (high)</option>
+        <option value="cost">Sort: cost (low)</option>
+        <option value="name">Sort: name</option>
+      </select>
+    </div>
+    <div class="chips" id="bchips">
+      <button class="chip" data-f="profitable">Profitable only</button>
+      <span class="count" id="bcount"></span>
+    </div>
+    <div id="blist"><div class="empty">Loading barter data…</div></div>
+  </section>
+
   <aside class="kit" id="kit">
-    <h2>Kit list</h2>
+    <h2>Shopping list</h2>
     <div class="total" id="total">Nothing selected</div>
     <div class="kitactions">
       <button class="btn brass" id="showMap">Map view</button>
@@ -182,7 +274,7 @@
       <button class="btn" id="copy">Copy list</button>
       <button class="btn" id="clear">Clear</button>
     </div>
-    <div id="kitBody"><p class="note">Tick quests on the left. Keys, markers, items and a per-map plan will appear here with current prices.</p></div>
+    <div id="kitBody"><p class="note">Tick quests on the left, or plan hideout upgrades on the Hideout tab. Keys, markers, hand-in items, hideout materials and a per-map plan will appear here together with current prices.</p></div>
     <p class="note">Prices are the 24h flea average, or the cheapest trader offer when that's lower (trader loyalty level shown). With a Tarkov Market API key entered, its flea average is used instead and is refreshed even when tarkov.dev is down. Items marked FIR must be found in raid and can't be bought. PvE mode uses the PvE market. Price data from tarkov.dev and tarkov-market.com.</p>
   </aside>
 </main>
@@ -214,19 +306,34 @@ const QUERY=`query Tasks($mode:GameMode){ tasks(gameMode:$mode){
 }}`;
 
 let mode='regular', tasks=[], byId={}, selected=new Set(), flags=new Set(), open=new Set(), hidden=new Set();
+let hideoutStations=[], hideoutById={}, hideoutLevel={}, hideoutSel=new Set(), hflags=new Set();
+let barters=[], ammoItems=[], bflags=new Set();
+let currentTab='quests';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const rub=n=>n==null?'—':'₽'+Math.round(n).toLocaleString();
+const curLvl=id=>hideoutLevel[id]||0;
+function fmtDur(s){s=Math.round(s||0);const h=Math.floor(s/3600),m=Math.round((s%3600)/60);return h?`${h}h${m?' '+m+'m':''}`:`${m}m`}
+const CAL_NAMES={CaliberUnknown:'Unknown',Caliber1143x23ACP:'.45 ACP (11.43x23)',Caliber127x33:'.50 AE (12.7x33)',Caliber127x55:'12.7x55 STs-130',Caliber127x99:'.50 BMG (12.7x99)',
+  Caliber12g:'12 Gauge',Caliber20g:'20 Gauge',Caliber20x1mm:'20x1 (flare)',Caliber23x75:'23x75',Caliber26x75:'26x75 (flare)',Caliber366TKM:'.366 TKM',Caliber40mmRU:'40mm RU',
+  Caliber40x46:'40x46',Caliber46x30:'4.6x30',Caliber545x39:'5.45x39',Caliber556x45NATO:'5.56x45 NATO',Caliber57x28:'5.7x28',Caliber58x42:'5.8x42',Caliber68x51:'6.8x51',
+  Caliber762x25TT:'7.62x25 TT',Caliber762x35:'.300 Blackout (7.62x35)',Caliber762x39:'7.62x39',Caliber762x51:'7.62x51 (.308)',Caliber762x54R:'7.62x54R',Caliber784x49:'7.84x49',
+  Caliber86x70:'.338 Lapua Mag (8.6x70)',Caliber93x64:'9.3x64',Caliber9x18PM:'9x18 Makarov',Caliber9x19PARA:'9x19 Parabellum',Caliber9x21:'9x21 Gyurza',Caliber9x33R:'.357 Mag (9x33R)',Caliber9x39:'9x39'};
+const calName=c=>CAL_NAMES[c]||String(c||'').replace(/^Caliber/,'');
 
 function load(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 selected=new Set(load('tqp.sel',[])); hidden=new Set(load('tqp.hidden',[])); mode=load('tqp.mode','regular');
+hideoutLevel=load('tqp.hlvl',{}); hideoutSel=new Set(load('tqp.hsel',[])); currentTab=load('tqp.tab','quests');
 
 function useData(list,when,fromCache){
   tasks=list; byId={}; tasks.forEach(t=>{byId[t.id]=t; t.kit=buildKit(t)});
   fillSelects();
   dataStatus=`${tasks.length} quests · ${fromCache?'cached copy from':'updated'} ${new Date(when).toLocaleString()}`;
   setStatus(); render();
+  if(currentTab==='hideout')renderHideoutList();
+  if(currentTab==='ammo')renderAmmo();
+  if(currentTab==='barters')renderBarters();
 }
 let dataStatus='',tmStatus='',tm={};
 function setStatus(){$('#status').textContent=[dataStatus,tmStatus].filter(Boolean).join(' · ');}
@@ -248,20 +355,24 @@ async function fetchTM(){
     const rec={when:Date.now(),map}; save(ck,rec); applyTM(rec);
   }catch(e){tm={};tmStatus='Tarkov Market: '+e.message;setStatus();}
 }
-function applyTM(rec){tm=rec.map;tmStatus=`${Object.keys(tm).length} Tarkov Market prices from ${new Date(rec.when).toLocaleTimeString()}`;setStatus();tasks.forEach(t=>t.kit=buildKit(t));render();}
+function applyTM(rec){tm=rec.map;tmStatus=`${Object.keys(tm).length} Tarkov Market prices from ${new Date(rec.when).toLocaleTimeString()}`;setStatus();tasks.forEach(t=>t.kit=buildKit(t));render();
+  if(currentTab==='hideout')renderHideoutList();
+  if(currentTab==='ammo')renderAmmo();
+  if(currentTab==='barters')renderBarters();
+}
 
 // Primary source: the same pre-built JSON the tarkov.dev site reads.
 const JSONAPI='https://json.tarkov.dev/';
 async function getJson(path){const r=await fetch(JSONAPI+path,{headers:{Accept:'application/json'}});if(!r.ok)throw new Error(`json.tarkov.dev ${path}: HTTP ${r.status}`);return r.json();}
 async function fetchJsonTasks(){
-  const [tk,tkEn,it,itEn,tr,trEn,mp,mpEn]=await Promise.all(['tasks','tasks_en','items','items_en','traders','traders_en','maps','maps_en'].map(p=>getJson(`${mode}/${p}`)));
-  const T=Object.assign({},tkEn.data||{},itEn.data||{},trEn.data||{},mpEn.data||{});
+  const [tk,tkEn,it,itEn,tr,trEn,mp,mpEn,ho,hoEn,ba]=await Promise.all(['tasks','tasks_en','items','items_en','traders','traders_en','maps','maps_en','hideout','hideout_en','barters'].map(p=>getJson(`${mode}/${p}`)));
+  const T=Object.assign({},tkEn.data||{},itEn.data||{},trEn.data||{},mpEn.data||{},hoEn.data||{});
   const tx=s=>typeof s==='string'?(T[s]??s):s;
   const rid=r=>typeof r==='string'?r:r?.id;
   const rawItems=it.data.items||it.data, traders=tr.data.traders||tr.data, maps=mp.data.maps||mp.data, rawTasks=tk.data.tasks||tk.data, qItems=tk.data.questItems||{};
   const itemCache={};
   const item=ref=>{const id=rid(ref);if(!id)return null;if(itemCache[id])return itemCache[id];const raw=rawItems[id];if(!raw)return null;
-    return itemCache[id]={id,name:tx(raw.name),shortName:tx(raw.shortName),iconLink:raw.iconLink,link:raw.link,wikiLink:raw.wikiLink,avg24hPrice:raw.avg24hPrice,lastLowPrice:raw.lastLowPrice,types:raw.types||[],
+    return itemCache[id]={id,name:tx(raw.name),shortName:tx(raw.shortName),iconLink:raw.iconLink,link:raw.link,wikiLink:raw.wikiLink,avg24hPrice:raw.avg24hPrice,lastLowPrice:raw.lastLowPrice,types:raw.types||[],properties:raw.properties||null,
       buyFor:(raw.buyFromTrader||[]).map(o=>{const t=traders[o.trader]||{};return {priceRUB:o.priceRUB,vendor:{name:tx(t.name)||'Trader',normalizedName:t.normalizedName||'trader',minTraderLevel:o.minTraderLevel}}})};};
   const mapObj=ref=>{const m=maps[rid(ref)];return m?{name:tx(m.name),normalizedName:m.normalizedName}:null};
   const trader=ref=>({name:tx(traders[rid(ref)]?.name)||'Unknown'});
@@ -284,6 +395,33 @@ async function fetchJsonTasks(){
       traderStanding:(t.finishRewards?.traderStanding||[]).map(r=>({trader:trader(r.trader),standing:r.standing}))}
   }));
   if(!list.length)throw new Error('json.tarkov.dev returned no quests');
+
+  const rawHideout=ho.data;
+  const hideoutBuilt=Object.values(rawHideout).map(s=>({
+    id:s.id,name:tx(s.name),normalizedName:s.normalizedName,imageLink:s.imageLink,
+    levels:(s.levels||[]).map(l=>({
+      level:l.level,constructionTime:l.constructionTime,description:tx(l.description),
+      itemRequirements:(l.itemRequirements||[]).map(r=>({item:item(r.item),count:r.count,fir:!!(r.attributes&&r.attributes.foundInRaid)})).filter(r=>r.item),
+      traderRequirements:(l.traderRequirements||[]).map(r=>({trader:trader(r.trader),requirementType:r.requirementType,value:r.value})),
+      skillRequirements:(l.skillRequirements||[]).map(r=>({skill:tx(r.skill),level:r.level})),
+      stationLevelRequirements:(l.stationLevelRequirements||[]).map(r=>({stationId:rid(r.station),level:r.level}))
+    }))
+  }));
+  const hoNameById={}; hideoutBuilt.forEach(s=>hoNameById[s.id]=s.name);
+  hideoutBuilt.forEach(s=>s.levels.forEach(l=>l.stationLevelRequirements.forEach(r=>r.stationName=hoNameById[r.stationId]||'?')));
+  hideoutStations=hideoutBuilt; hideoutById={}; hideoutStations.forEach(s=>hideoutById[s.id]=s);
+
+  const rawBarters=ba.data;
+  barters=(rawBarters||[]).map(b=>({
+    id:b.id,trader:trader(b.trader),minTraderLevel:b.minTraderLevel,
+    requiredItems:(b.requiredItems||[]).map(r=>({item:item(r.item),count:r.count})).filter(r=>r.item),
+    offeredItem:b.offeredItem?{item:item(b.offeredItem.item),count:b.offeredItem.count}:null,
+    taskUnlockName:b.taskUnlock?(tx(rawTasks[b.taskUnlock]?.name)||null):null
+  })).filter(b=>b.offeredItem&&b.requiredItems.length);
+
+  ammoItems=Object.values(rawItems).filter(r=>r.properties&&r.properties.propertiesType==='ItemPropertiesAmmo')
+    .map(r=>{const base=item(r.id);return base?{...base,ammo:r.properties}:null}).filter(Boolean);
+
   return list;
 }
 async function fetchGraphqlTasks(){
@@ -438,14 +576,23 @@ function keyLine(it,label){const p=price(it);return `<li>${esc(label)} <a href="
 
 function renderKit(){
   const sel=[...selected].map(id=>byId[id]).filter(Boolean);
-  if(!sel.length){$('#total').textContent='Nothing selected';$('#kitBody').innerHTML='<p class="note">Tick quests on the left. Keys, markers, items and a per-map plan will appear here with current prices.</p>';return;}
-  const keys={},marks={},hand={},qitems=[],maps={}; let total=0;
+  const selH=[...hideoutSel].map(id=>hideoutById[id]).filter(Boolean).filter(s=>s.levels.some(l=>l.level===curLvl(s.id)+1));
+  if(!sel.length&&!selH.length){$('#total').textContent='Nothing selected';$('#kitBody').innerHTML='<p class="note">Tick quests on the left, or plan hideout upgrades on the Hideout tab. Keys, markers, hand-in items, hideout materials and a per-map plan will appear here together with current prices.</p>';return;}
+  const keys={},marks={},hand={},qitems=[],maps={},hideoutMats={}; let total=0;
   sel.forEach(t=>{
     Object.values(t.kit.keys).forEach(k=>{const e=keys[k.item.id]||(keys[k.item.id]={item:k.item,quests:[],alt:k.alt});e.quests.push(t.name)});
     Object.values(t.kit.marks).forEach(m=>{const e=marks[m.item.id]||(marks[m.item.id]={item:m.item,count:0,quests:[],alts:m.alts});e.count+=m.count;e.quests.push(t.name)});
     Object.values(t.kit.hand).forEach(h=>{const key=h.item.id+(h.fir?':fir':'');const e=hand[key]||(hand[key]={item:h.item,count:0,fir:h.fir,quests:[],alts:h.alts});e.count+=h.count;e.quests.push(t.name)});
     t.kit.qitems.forEach(q=>qitems.push({...q,quest:t.name}));
     Object.entries(t.kit.maps).forEach(([n,m])=>{const e=maps[n]||(maps[n]={norm:m.norm,rows:[]});m.objs.forEach(o=>e.rows.push({q:t.name,d:o.description,opt:o.optional,pin:pin(o,m.norm)}))});
+  });
+  selH.forEach(s=>{
+    const next=s.levels.find(l=>l.level===curLvl(s.id)+1);
+    next.itemRequirements.forEach(r=>{
+      const key=r.item.id+(r.fir?':fir':'');
+      const e=hideoutMats[key]||(hideoutMats[key]={item:r.item,count:0,fir:r.fir,stations:[]});
+      e.count+=r.count; e.stations.push(`${s.name} L${next.level}`);
+    });
   });
   const row=(it,sub,qty,cls='')=>{const p=price(it);const line=p.best?rub(p.best*(qty||1)):'—';if(p.best)total+=p.best*(qty||1);
     return `<div class="item ${cls}">${it.iconLink?`<img src="${esc(it.iconLink)}" alt="">`:'<span></span>'}<div><div class="iname"><a href="${esc(it.link||it.wikiLink||'#')}" target="_blank" rel="noopener">${esc(it.name)}</a></div><div class="isub">${sub}</div></div><div class="iprice"><b>${line}</b>${p.best?esc(p.src):'no price'}</div></div>`};
@@ -458,13 +605,146 @@ function renderKit(){
   if(buy.length)h+=`<h3>Hand in (buyable) <span>${buy.length}</span></h3>`+buy.map(x=>row(x.item,`${x.count}× · ${esc(x.quests.join(', '))}${x.alts?.length?' · or '+esc(x.alts.join(', ')):''}`,x.count)).join('');
   if(fir.length)h+=`<h3>Hand in, found in raid <span>${fir.length}</span></h3>`+fir.map(x=>`<div class="item">${x.item.iconLink?`<img src="${esc(x.item.iconLink)}" alt="">`:'<span></span>'}<div><div class="iname"><a href="${esc(x.item.link||'#')}" target="_blank" rel="noopener">${esc(x.item.name)}</a></div><div class="isub">${x.count}× · ${esc(x.quests.join(', '))}${x.alts?.length?' · or '+esc(x.alts.join(', ')):''}</div></div><div class="iprice"><span class="fir">FIR</span></div></div>`).join('');
   if(qitems.length)h+=`<h3>Quest items to pick up <span>${qitems.length}</span></h3>`+qitems.map(q=>`<div class="item"><span></span><div><div class="iname">${esc(q.name)}</div><div class="isub">${q.count}× · ${esc(q.quest)}${q.maps.length?' · '+esc(q.maps.join(', ')):''}</div></div><div></div></div>`).join('');
+  const hmBuy=Object.values(hideoutMats).filter(x=>!x.fir), hmFir=Object.values(hideoutMats).filter(x=>x.fir);
+  if(hmBuy.length)h+=`<h3>Hideout materials <span>${hmBuy.length}</span></h3>`+hmBuy.map(x=>row(x.item,`${x.count}× · ${esc(x.stations.join(', '))}`,x.count)).join('');
+  if(hmFir.length)h+=`<h3>Hideout materials, found in raid <span>${hmFir.length}</span></h3>`+hmFir.map(x=>`<div class="item">${x.item.iconLink?`<img src="${esc(x.item.iconLink)}" alt="">`:'<span></span>'}<div><div class="iname"><a href="${esc(x.item.link||'#')}" target="_blank" rel="noopener">${esc(x.item.name)}</a></div><div class="isub">${x.count}× · ${esc(x.stations.join(', '))}</div></div><div class="iprice"><span class="fir">FIR</span></div></div>`).join('');
   const MP=Object.entries(maps).sort((a,b)=>b[1].rows.length-a[1].rows.length);
   let plan='';
   if(MP.length)plan+=`<h3>Raid plan by map <span>${MP.length} maps</span></h3>`+MP.map(([n,m])=>`<div class="map"><div class="mname">${esc(n)} <span>${MAPCFG[m.norm]?`<button class="btn" style="padding:2px 9px;font-size:12px" data-showmap="${esc(m.norm)}">Show on map</button> `:''}<a href="https://tarkov.dev/map/${esc(m.norm)}" target="_blank" rel="noopener" class="small">tarkov.dev</a></span></div><ul>${m.rows.map(r=>`<li class="${r.opt?'opt':''}"><span class="qn">${esc(r.q)}:</span> ${esc(r.d)}${r.pin?` <a href="${r.pin}" target="_blank" rel="noopener" title="Zoom the map to this spot">📍</a>`:''}</li>`).join('')}</ul></div>`).join('');
   $('#kitBody').innerHTML=`<div class="kitgrid"><div>${h||'<p class="note">Nothing to bring for these quests.</p>'}</div><div>${plan}</div></div>`;
-  $('#total').textContent=`${sel.length} quests · about ${rub(total)} to buy`;
+  $('#total').textContent=`${sel.length} quest${sel.length!==1?'s':''}${selH.length?` · ${selH.length} hideout upgrade${selH.length!==1?'s':''}`:''} · about ${rub(total)} to buy`;
 }
 function render(){renderList();renderKit();}
+
+// ---------- Hideout tracker ----------
+function hideoutVisible(){
+  const q=$('#hq').value.trim().toLowerCase(), sort=$('#hsort').value;
+  const nextCost=s=>{const n=s.levels.find(l=>l.level===curLvl(s.id)+1);if(!n)return -1;return n.itemRequirements.reduce((a,r)=>a+(price(r.item).best||0)*r.count,0)};
+  let list=hideoutStations.filter(s=>{
+    if(q&&!s.name.toLowerCase().includes(q))return false;
+    const max=Math.max(...s.levels.map(l=>l.level));
+    if(hflags.has('ready')){const next=s.levels.find(l=>l.level===curLvl(s.id)+1);if(!next)return false;if(!next.stationLevelRequirements.every(r=>curLvl(r.stationId)>=r.level))return false;}
+    if(hflags.has('planned')&&!hideoutSel.has(s.id))return false;
+    if(hflags.has('maxed')&&curLvl(s.id)<max)return false;
+    return true;
+  });
+  const cmp={name:(a,b)=>a.name.localeCompare(b.name),level:(a,b)=>curLvl(b.id)-curLvl(a.id)||a.name.localeCompare(b.name),cost:(a,b)=>nextCost(b)-nextCost(a)}[sort]||((a,b)=>a.name.localeCompare(b.name));
+  return list.sort(cmp);
+}
+function hideoutCard(s){
+  const lvl=curLvl(s.id), max=Math.max(...s.levels.map(l=>l.level));
+  const next=s.levels.find(l=>l.level===lvl+1);
+  let opts=''; for(let i=0;i<=max;i++)opts+=`<option value="${i}" ${i===lvl?'selected':''}>${i===0?'Not built':'Level '+i}</option>`;
+  let body;
+  if(next){
+    const cost=next.itemRequirements.reduce((a,r)=>a+(price(r.item).best||0)*r.count,0);
+    const items=next.itemRequirements.map(r=>{const p=price(r.item);return `<li>${r.count}× <a href="${esc(r.item.link||r.item.wikiLink||'#')}" target="_blank" rel="noopener">${esc(r.item.name)}</a>${r.fir?' <span class="fir">FIR</span>':''} <span class="small">${p.best?rub(p.best*r.count)+' · '+esc(p.src):'no price data'}</span></li>`}).join('');
+    const reqTags=[...next.traderRequirements.map(r=>`<span class="tag">${esc(r.trader.name)} LL${r.value}</span>`),
+      ...next.skillRequirements.map(r=>`<span class="tag">${esc(r.skill)} ${r.level}</span>`),
+      ...next.stationLevelRequirements.map(r=>`<span class="tag ${curLvl(r.stationId)>=r.level?'met':'unmet'}">${esc(r.stationName)} L${r.level}</span>`)].join('');
+    body=`<div class="hbody">
+      <div class="small">${esc(next.description||'')}${next.constructionTime?` · Build time ${fmtDur(next.constructionTime)}`:''}</div>
+      ${reqTags?`<div class="hreq">${reqTags}</div>`:''}
+      <ul>${items}</ul>
+      <div class="hplan"><label><input type="checkbox" data-hsel="${s.id}" ${hideoutSel.has(s.id)?'checked':''}> Add Level ${next.level} materials to shopping list</label>${cost?`<span class="small">${rub(cost)}</span>`:''}</div>
+    </div>`;
+  } else {
+    body='<div class="hbody"><span class="hmax">Max level reached</span></div>';
+  }
+  return `<div class="hcard" data-hid="${s.id}">
+    <div class="hhead">${s.imageLink?`<img class="hicon" src="${esc(s.imageLink)}" alt="">`:''}<div class="hname">${esc(s.name)}</div>
+      <div class="hlevel">Current: <select data-hlvl="${s.id}">${opts}</select></div></div>
+    ${body}
+  </div>`;
+}
+function renderHideoutList(){
+  if(!hideoutStations.length){$('#hlist').innerHTML='<div class="empty">Hideout data not loaded yet.</div>';$('#hcount').textContent='';return;}
+  const list=hideoutVisible();
+  $('#hcount').textContent=`${list.length} shown · ${hideoutSel.size} planned`;
+  $('#hlist').innerHTML=list.length?list.map(hideoutCard).join(''):'<div class="empty">No stations match these filters.</div>';
+}
+
+// ---------- Ammo cheat sheet ----------
+function ammoVisible(){
+  const q=$('#aq').value.trim().toLowerCase(), cal=$('#acal').value, sort=$('#asort').value;
+  let list=ammoItems.filter(a=>{
+    if(cal&&a.ammo.caliber!==cal)return false;
+    if(q&&!a.name.toLowerCase().includes(q))return false;
+    return true;
+  });
+  const pr=a=>price(a).best??Infinity;
+  const cmp={pen:(a,b)=>b.ammo.penetrationPower-a.ammo.penetrationPower,dmg:(a,b)=>b.ammo.damage-a.ammo.damage,price:(a,b)=>pr(a)-pr(b),name:(a,b)=>a.name.localeCompare(b.name)}[sort]||((a,b)=>b.ammo.penetrationPower-a.ammo.penetrationPower);
+  return list.sort(cmp);
+}
+function fillAmmoSelect(){
+  const cals=[...new Set(ammoItems.map(a=>a.ammo.caliber))].sort((a,b)=>calName(a).localeCompare(calName(b)));
+  $('#acal').innerHTML='<option value="">All calibers</option>'+cals.map(c=>`<option value="${esc(c)}">${esc(calName(c))}</option>`).join('');
+}
+function renderAmmo(){
+  if(!ammoItems.length){$('#atbl').innerHTML='';$('#acount').textContent='Ammo data not loaded yet.';return;}
+  if($('#acal').options.length<=1)fillAmmoSelect();
+  const list=ammoVisible();
+  $('#acount').textContent=`${list.length} rounds`;
+  $('#atbl').innerHTML=`<thead><tr><th>Name</th><th>Caliber</th><th class="num">Dmg</th><th class="num">Pen</th><th class="num">Armor dmg</th><th class="num">Frag%</th><th class="num">Speed m/s</th><th class="num">Price</th></tr></thead><tbody>${list.map(a=>{
+    const p=price(a);
+    return `<tr><td>${a.iconLink?`<img src="${esc(a.iconLink)}" alt="">`:''}<a href="${esc(a.link||a.wikiLink||'#')}" target="_blank" rel="noopener">${esc(a.name)}</a>${a.ammo.tracer?' <span class="small">●tracer</span>':''}</td><td>${esc(calName(a.ammo.caliber))}</td><td class="num">${a.ammo.damage}</td><td class="num">${a.ammo.penetrationPower}</td><td class="num">${a.ammo.armorDamage}</td><td class="num">${Math.round((a.ammo.fragmentationChance||0)*100)}%</td><td class="num">${a.ammo.initialSpeed}</td><td class="num">${p.best?rub(p.best):'—'}</td></tr>`;
+  }).join('')}</tbody>`;
+}
+
+// ---------- Barter profit finder ----------
+function barterCalc(b){
+  let cost=0,complete=true;
+  b.requiredItems.forEach(r=>{const p=price(r.item).best;if(p==null)complete=false;else cost+=p*r.count;});
+  const vp=price(b.offeredItem.item).best;
+  const value=vp!=null?vp*b.offeredItem.count:null;
+  const profit=(value!=null&&complete)?value-cost:null;
+  return {cost:complete?cost:null,value,profit};
+}
+function fillBarterSelect(){
+  const trs=[...new Set(barters.map(b=>b.trader.name))].sort();
+  $('#btrader').innerHTML='<option value="">All traders</option>'+trs.map(x=>`<option>${esc(x)}</option>`).join('');
+}
+function bartersVisible(){
+  const q=$('#bq').value.trim().toLowerCase(), tr=$('#btrader').value, sort=$('#bsort').value;
+  let list=barters.filter(b=>{
+    if(tr&&b.trader.name!==tr)return false;
+    if(q){const hay=[b.offeredItem.item.name,...b.requiredItems.map(r=>r.item.name)].join(' ').toLowerCase();if(!hay.includes(q))return false;}
+    return true;
+  }).map(b=>({b,calc:barterCalc(b)}));
+  if(bflags.has('profitable'))list=list.filter(x=>x.calc.profit!=null&&x.calc.profit>0);
+  const cmp={profit:(a,b)=>(b.calc.profit??-Infinity)-(a.calc.profit??-Infinity),cost:(a,b)=>(a.calc.cost??Infinity)-(b.calc.cost??Infinity),name:(a,b)=>a.b.offeredItem.item.name.localeCompare(b.b.offeredItem.item.name)}[sort]||((a,b)=>(b.calc.profit??-Infinity)-(a.calc.profit??-Infinity));
+  return list.sort(cmp);
+}
+function renderBarters(){
+  if(!barters.length){$('#blist').innerHTML='<div class="empty">Barter data not loaded yet.</div>';$('#bcount').textContent='';return;}
+  if($('#btrader').options.length<=1)fillBarterSelect();
+  const list=bartersVisible();
+  $('#bcount').textContent=`${list.length} shown`;
+  $('#blist').innerHTML=list.length?list.map(({b,calc})=>{
+    const req=b.requiredItems.map(r=>`<li>${r.count}× <a href="${esc(r.item.link||r.item.wikiLink||'#')}" target="_blank" rel="noopener">${esc(r.item.name)}</a></li>`).join('');
+    const profCls=calc.profit==null?'':(calc.profit>0?'profit-pos':'profit-neg');
+    return `<div class="item" style="align-items:flex-start">
+      ${b.offeredItem.item.iconLink?`<img src="${esc(b.offeredItem.item.iconLink)}" alt="">`:'<span></span>'}
+      <div><div class="iname">${b.offeredItem.count}× <a href="${esc(b.offeredItem.item.link||b.offeredItem.item.wikiLink||'#')}" target="_blank" rel="noopener">${esc(b.offeredItem.item.name)}</a></div>
+        <div class="isub">${esc(b.trader.name)} LL${b.minTraderLevel||1}${b.taskUnlockName?` · requires ${esc(b.taskUnlockName)}`:''}</div>
+        <ul style="margin:4px 0 0;padding-left:18px">${req}</ul></div>
+      <div class="iprice"><b class="${profCls}">${calc.profit!=null?rub(calc.profit):'—'}</b>${calc.cost!=null?'cost '+rub(calc.cost):'no price'}</div>
+    </div>`;
+  }).join(''):'<div class="empty">No barters match these filters.</div>';
+}
+
+// ---------- Tabs ----------
+function switchTab(t){
+  currentTab=t; save('tqp.tab',t);
+  document.querySelectorAll('#tabbar button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on',p.dataset.panel===t));
+  const full=t==='ammo'||t==='barters';
+  document.querySelector('main').classList.toggle('full',full);
+  $('#kit').style.display=full?'none':'';
+  if(t==='hideout')renderHideoutList();
+  if(t==='ammo')renderAmmo();
+  if(t==='barters')renderBarters();
+}
 
 // ---------- In-app map viewer (only the selected quests) ----------
 const MAPCFG={"streets-of-tarkov":{"svgPath":"https://assets.tarkov.dev/maps/svg/StreetsOfTarkov.svg","svgLayer":"Ground_Level","coordinateRotation":180,"transform":[0.38,0,0.38,0],"bounds":[[323,-295],[-280,532]],"minZoom":1,"maxZoom":5},"ground-zero":{"svgPath":"https://assets.tarkov.dev/maps/svg/GroundZero.svg","svgLayer":"Ground_Level","tilePath":"https://assets.tarkov.dev/maps/groundzero/main_summer/{z}/{x}/{y}.png","tileSize":256,"coordinateRotation":180,"transform":[0.524,167.3,0.524,65.1],"bounds":[[249,-124],[-99,364]],"minZoom":1,"maxZoom":6},"customs":{"svgPath":"https://assets.tarkov.dev/maps/svg/Customs.svg","svgLayer":"Ground_Level","tilePath":"https://assets.tarkov.dev/maps/customs_0.16/main/{z}/{x}/{y}.png","tileSize":256,"coordinateRotation":180,"transform":[0.239,168.65,0.239,136.35],"bounds":[[698,-307],[-372,237]],"minZoom":2,"maxZoom":6},"factory":{"svgPath":"https://assets.tarkov.dev/maps/svg/Factory.svg","svgLayer":"Ground_Floor","tilePath":"https://assets.tarkov.dev/maps/factory/main/{z}/{x}/{y}.png","tileSize":256,"coordinateRotation":90,"transform":[1.629,119.9,1.629,139.3],"bounds":[[77,-64.5],[-65.5,67.4]],"minZoom":1,"maxZoom":6},"icebreaker":{"tilePath":"https://assets.tarkov.dev/maps/icebreaker/06_infirmary/{z}/{x}/{y}.png","tileSize":256,"coordinateRotation":180,"transform":[2.0,125.0,3.5,91.0],"bounds":[[77,-64.5],[-65.5,67.4]],"minZoom":1,"maxZoom":5},"interchange":{"svgPath":"https://assets.tarkov.dev/maps/svg/Interchange.svg","svgLayer":"Ground_Level","tilePath":"https://assets.tarkov.dev/maps/interchange/main/{z}/{x}/{y}.png","tileSize":256,"coordinateRotation":180,"transform":[0.265,150.6,0.265,134.6],"bounds":[[598,-442],[-433,426]],"minZoom":1,"maxZoom":6},"the-lab":{"tilePath":"https://assets.tarkov.dev/maps/labs_v4/1st/{z}/{x}/{y}.png","tileSize":175,"coordinateRotation":270,"transform":[0.575,281.2,0.575,193.7],"bounds":[[-80,-477],[-287,-193]],"minZoom":2,"maxZoom":6},"the-labyrinth":{"tilePath":"https://assets.tarkov.dev/maps/labyrinth/main/{z}/{x}/{y}.png","coordinateRotation":270,"transform":[2.115,85.5,2.115,128.0],"bounds":[[-52,-37],[53,76]],"minZoom":1,"maxZoom":6},"lighthouse":{"svgPath":"https://assets.tarkov.dev/maps/svg/Lighthouse.svg","svgLayer":"Ground_Level","coordinateRotation":180,"transform":[0.2,0,0.2,0],"bounds":[[515,-998],[-545,725]],"minZoom":1,"maxZoom":6},"reserve":{"svgPath":"https://assets.tarkov.dev/maps/svg/Reserve.svg","svgLayer":"Ground_Level","tilePath":"https://assets.tarkov.dev/maps/reserve/main/{z}/{x}/{y}.png","coordinateRotation":180,"transform":[0.395,122.0,0.395,137.65],"bounds":[[289,-293],[-303,244]],"svgBounds":[[289,-274],[-303,272]],"minZoom":2,"maxZoom":6},"shoreline":{"svgPath":"https://assets.tarkov.dev/maps/svg/Shoreline.svg","svgLayer":"Ground_Level","tilePath":"https://assets.tarkov.dev/maps/shoreline/main_summer/{z}/{x}/{y}.png","coordinateRotation":180,"transform":[0.16,83.2,0.16,111.1],"bounds":[[504,-415],[-1056,618]],"minZoom":2,"maxZoom":6},"terminal":{"svgPath":"https://assets.tarkov.dev/maps/svg/Terminal.svg","svgLayer":"Ground_Level","coordinateRotation":180,"transform":[0.2,0,0.2,0],"bounds":[[463,-580],[-433,475]],"minZoom":2,"maxZoom":6},"woods":{"svgPath":"https://assets.tarkov.dev/maps/svg/Woods.svg","svgLayer":"Ground_Level","tilePath":"https://assets.tarkov.dev/maps/woods/main_0.16/{z}/{x}/{y}.png","coordinateRotation":180,"transform":[0.1855,112.95,0.1855,167.85],"bounds":[[646,-914],[-761,442]],"minZoom":2,"maxZoom":6}};
@@ -570,6 +850,25 @@ $('#list').addEventListener('click',e=>{
 });
 ['#q','#trader','#mapf','#lvl','#sort'].forEach(s=>$(s).addEventListener('input',renderList));
 $('#chips').addEventListener('click',e=>{const c=e.target.closest('.chip');if(!c)return;const f=c.dataset.f;flags.has(f)?flags.delete(f):flags.add(f);c.classList.toggle('on');renderList();});
+
+$('#tabbar').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;switchTab(b.dataset.tab);});
+
+$('#hlist').addEventListener('change',e=>{
+  const sel=e.target.closest('[data-hlvl]');
+  if(sel){const id=sel.dataset.hlvl;hideoutLevel[id]=+sel.value;save('tqp.hlvl',hideoutLevel);
+    const max=Math.max(...hideoutById[id].levels.map(l=>l.level));
+    if(+sel.value>=max)hideoutSel.delete(id);
+    save('tqp.hsel',[...hideoutSel]);renderHideoutList();renderKit();return;}
+  const chk=e.target.closest('[data-hsel]');
+  if(chk){chk.checked?hideoutSel.add(chk.dataset.hsel):hideoutSel.delete(chk.dataset.hsel);save('tqp.hsel',[...hideoutSel]);renderKit();return;}
+});
+['#hq','#hsort'].forEach(s=>$(s).addEventListener('input',renderHideoutList));
+$('#hchips').addEventListener('click',e=>{const c=e.target.closest('.chip');if(!c)return;const f=c.dataset.f;hflags.has(f)?hflags.delete(f):hflags.add(f);c.classList.toggle('on');renderHideoutList();});
+
+['#aq','#acal','#asort'].forEach(s=>$(s).addEventListener('input',renderAmmo));
+
+['#bq','#btrader','#bsort'].forEach(s=>$(s).addEventListener('input',renderBarters));
+$('#bchips').addEventListener('click',e=>{const c=e.target.closest('.chip');if(!c)return;const f=c.dataset.f;bflags.has(f)?bflags.delete(f):bflags.add(f);c.classList.toggle('on');renderBarters();});
 $('#modeSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.dataset.mode===mode)return;mode=b.dataset.mode;save('tqp.mode',mode);document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x===b));fetchTasks();});
 $('#refresh').addEventListener('click',fetchTasks);
 $('#clear').addEventListener('click',()=>{selected.clear();save('tqp.sel',[]);render();});
@@ -585,6 +884,7 @@ $('#copy').addEventListener('click',()=>{
 document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.mode===mode));
 $('#tmkey').value=load('tqp.tmkey','');
 $('#tmkey').addEventListener('change',()=>{try{localStorage.removeItem('tqp.tm.'+mode)}catch(e){};if(tasks.length)fetchTM();});
+switchTab(currentTab);
 fetchTasks();
 </script>
 </body>
