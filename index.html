@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tarkov quest planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --bg:#1A1D18; --surface:#23271F; --raised:#2C3128; --line:#3A4034;
+    --ink:#E8E3D0; --muted:#9A9C8A; --brass:#C9A24A; --blue:#7FB3D5; --rust:#C2553B; --green:#8DB36A;
+    --radius:4px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"Barlow",system-ui,sans-serif;font-size:15px;line-height:1.45}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  button,select,input{font:inherit;color:inherit}
+  button{cursor:pointer}
+  :focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:20px 24px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  h1{font-family:"Barlow Condensed";font-weight:700;font-size:34px;line-height:1;margin:0;letter-spacing:.01em}
+  .sub{color:var(--muted);margin:6px 0 0;font-size:14px;max-width:70ch}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .seg button{background:transparent;border:0;padding:7px 14px;color:var(--muted)}
+  .seg button.on{background:var(--raised);color:var(--ink)}
+  .btn{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius);padding:7px 12px}
+  .btn:hover{border-color:var(--muted)}
+  .btn.brass{background:var(--brass);color:#1A1D18;border-color:var(--brass);font-weight:600}
+  .status{color:var(--muted);font-size:13px}
+
+  main{display:grid;grid-template-columns:minmax(0,45fr) minmax(480px,55fr);gap:0;min-height:calc(100vh - 90px)}
+  @media (max-width:1150px){main{grid-template-columns:1fr}.kit{position:static!important;max-height:none!important;border-left:0;border-top:1px solid var(--line)}}
+
+  .left{padding:14px 14px 40px 20px;min-width:0}
+  .filters{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px}
+  @media (max-width:760px){.filters{grid-template-columns:1fr 1fr}}
+  .filters input,.filters select{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;font-size:14px}
+  .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 11px;color:var(--muted);background:transparent}
+  .chip.on{color:var(--ink);border-color:var(--brass);background:rgba(201,162,74,.12)}
+  .count{color:var(--muted);margin-left:auto;font-size:13px}
+
+  .quest{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);margin-bottom:4px}
+  .quest.sel{border-left:3px solid var(--brass)}
+  .qrow{display:grid;grid-template-columns:28px minmax(0,1fr) auto 30px;gap:8px;align-items:center;padding:7px 10px}
+  .eye{background:transparent;border:0;color:var(--muted);font-size:18px;padding:2px 4px;border-radius:3px;line-height:1}
+  .eye:hover{color:var(--ink);background:var(--raised)}
+  .quest.hid{opacity:.6}
+  .qrow input{width:16px;height:16px;accent-color:var(--brass);margin:0}
+  .qname{font-family:"Barlow Condensed";font-weight:600;font-size:19px;line-height:1.15;cursor:pointer}
+  .qmeta{color:var(--muted);font-size:13px;margin-top:2px;display:flex;gap:10px;flex-wrap:wrap}
+  .tags{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+  .tag{font-size:12px;padding:2px 7px;border-radius:3px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+  .tag.key{color:var(--brass);border-color:rgba(201,162,74,.5)}
+  .tag.mark{color:var(--blue);border-color:rgba(127,179,213,.5)}
+  .tag.kappa{color:var(--green);border-color:rgba(141,179,106,.5)}
+  .tag.lk{color:#D8B4E2;border-color:rgba(216,180,226,.5)}
+  .qbody{display:none;padding:4px 14px 14px 50px;border-top:1px solid var(--line);font-size:15px}
+  .quest.open .qbody{display:block}
+  .qbody h4{font-family:"Barlow Condensed";font-weight:600;font-size:15px;letter-spacing:.04em;color:var(--muted);margin:12px 0 5px}
+  .qbody ul{margin:0;padding-left:18px}
+  .qbody li{margin:3px 0}
+  .opt{color:var(--muted)}
+  .fir{color:var(--rust);font-weight:600}
+  .links{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px}
+  .small{font-size:14px;color:var(--muted)}
+  .empty{color:var(--muted);padding:40px 0;text-align:center}
+  .err{background:rgba(194,85,59,.15);border:1px solid var(--rust);border-radius:var(--radius);padding:12px 14px;margin:12px 0}
+
+  .kit{position:sticky;top:0;max-height:100vh;overflow:auto;border-left:1px solid var(--line);background:var(--surface);padding:16px 24px 40px 20px}
+  .kit h2{font-family:"Barlow Condensed";font-weight:700;font-size:26px;margin:0 0 2px;line-height:1}
+  .kit .total{font-family:"Barlow Condensed";font-size:24px;color:var(--brass);font-weight:600}
+  .kit h3{font-family:"Barlow Condensed";font-weight:600;font-size:20px;letter-spacing:.04em;margin:20px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
+  .kit h3 span{color:var(--muted);font-weight:500}
+  .item{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:12px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line);font-size:15px}
+  .item img{width:40px;height:40px;object-fit:contain;background:var(--raised);border-radius:3px}
+  .iname{font-weight:500;line-height:1.2}
+  .isub{color:var(--muted);font-size:14px;line-height:1.35;margin-top:2px}
+  .iprice{text-align:right;font-size:13px;white-space:nowrap;color:var(--muted)}
+  .iprice b{color:var(--brass);font-weight:600;display:block;font-size:16px}
+  .keyrow .iname{color:var(--brass)}
+  .map{margin-top:10px}
+  .map .mname{font-family:"Barlow Condensed";font-weight:600;font-size:21px;display:flex;justify-content:space-between;align-items:baseline}
+  .map ul{margin:6px 0 0;padding-left:18px;font-size:15px}
+  .map li{margin:5px 0;line-height:1.4}
+  .map li .qn{color:var(--muted)}
+  .kitactions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .kitgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 28px}
+  .kitgrid>div{min-width:0}
+  @media (max-width:1400px){.kitgrid{grid-template-columns:1fr}}
+  .note{font-size:13px;color:var(--muted);margin-top:16px;line-height:1.45}
+
+  .modal{display:none;position:fixed;inset:0;background:var(--bg);z-index:1000;flex-direction:column}
+  .modal.open{display:flex}
+  .mhead{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .mhead h2{font-family:"Barlow Condensed";font-weight:700;font-size:22px;margin:0 12px 0 0}
+  .mtabs{display:flex;gap:6px;flex-wrap:wrap}
+  .mtabs button{background:transparent;border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--muted)}
+  .mtabs button.on{color:var(--ink);border-color:var(--brass);background:rgba(201,162,74,.12)}
+  .mclose{margin-left:auto}
+  .mbody{display:flex;flex:1;min-height:0}
+  #leaf{flex:1;background:#2A2E27}
+  .legend{width:300px;border-left:1px solid var(--line);overflow:auto;padding:10px 12px;background:var(--surface);font-size:13px}
+  .legend .lq{font-family:"Barlow Condensed";font-weight:600;font-size:16px;margin:10px 0 4px;display:flex;align-items:center;gap:8px}
+  .legend .lo{padding:4px 0 4px 26px;cursor:pointer;color:var(--muted);line-height:1.3}
+  .legend .lo:hover{color:var(--ink)}
+  .legend .lo.nopos{cursor:default;opacity:.6}
+  .sw{width:14px;height:14px;border-radius:50%;border:2px solid #fff;flex:none}
+  .pin{width:24px;height:24px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
+  .pin span{transform:rotate(45deg);font:600 11px "Barlow";color:#fff}
+  .leaflet-container{font-family:"Barlow",sans-serif}
+  .arealabel{position:absolute;width:220px;text-align:center;font-family:"Barlow Condensed";font-weight:700;font-size:15px;letter-spacing:.06em;text-transform:uppercase;color:#F2EDD9;text-shadow:0 0 3px #000,0 0 6px #000,0 1px 2px #000;pointer-events:none;white-space:nowrap}
+  .lbl-toggle{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius);padding:4px 10px;font-size:13px}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--raised);color:var(--ink)}
+  .leaflet-popup-content{margin:10px 12px;font-size:13px}
+  .leaflet-control-attribution{background:rgba(26,29,24,.8)!important;color:var(--muted)!important;font-size:10px}
+  .leaflet-control-attribution a{color:var(--blue)!important}
+  @media (max-width:760px){.legend{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Tarkov quest planner</h1>
+    <p class="sub">Pick the quests you're working on and get one kit list: keys, markers, hand-in items and where to go. Live data and prices from tarkov.dev.</p>
+  </div>
+  <div class="toolbar">
+    <div class="seg" id="modeSeg">
+      <button data-mode="regular" class="on">PvP</button>
+      <button data-mode="pve">PvE</button>
+    </div>
+    <button class="btn" id="refresh">Refresh prices</button>
+    <input id="tmkey" class="btn" style="width:210px" placeholder="Tarkov Market API key (optional)" aria-label="Tarkov Market API key">
+    <span class="status" id="status">Loading quests…</span>
+  </div>
+</header>
+
+<main>
+  <section class="left">
+    <div class="filters">
+      <input id="q" placeholder="Search quest, item or key name" aria-label="Search">
+      <select id="trader"><option value="">All traders</option></select>
+      <select id="mapf"><option value="">All maps</option></select>
+      <select id="lvl">
+        <option value="">Any level</option>
+        <option value="10">Up to level 10</option><option value="20">Up to level 20</option>
+        <option value="30">Up to level 30</option><option value="40">Up to level 40</option>
+      </select>
+      <select id="sort">
+        <option value="level">Sort: level</option>
+        <option value="name">Sort: name</option>
+        <option value="trader">Sort: trader</option>
+        <option value="xp">Sort: XP (high first)</option>
+        <option value="cost">Sort: kit cost (high first)</option>
+      </select>
+    </div>
+    <div class="chips" id="chips">
+      <button class="chip" data-f="kappa">Kappa required</button>
+      <button class="chip" data-f="lk">Lightkeeper required</button>
+      <button class="chip" data-f="keys">Needs a key</button>
+      <button class="chip" data-f="mark">Needs markers or tools</button>
+      <button class="chip" data-f="selected">Selected only</button>
+      <button class="chip" data-f="hidden">Hidden (completed)</button>
+      <span class="count" id="count"></span>
+    </div>
+    <div id="list"><div class="empty">Fetching quest data…</div></div>
+  </section>
+
+  <aside class="kit" id="kit">
+    <h2>Kit list</h2>
+    <div class="total" id="total">Nothing selected</div>
+    <div class="kitactions">
+      <button class="btn brass" id="showMap">Map view</button>
+      <button class="btn" id="addPre">Add prerequisites</button>
+      <button class="btn" id="copy">Copy list</button>
+      <button class="btn" id="clear">Clear</button>
+    </div>
+    <div id="kitBody"><p class="note">Tick quests on the left. Keys, markers, items and a per-map plan will appear here with current prices.</p></div>
+    <p class="note">Prices are the 24h flea average, or the cheapest trader offer when that's lower (trader loyalty level shown). With a Tarkov Market API key entered, its flea average is used instead and is refreshed even when tarkov.dev is down. Items marked FIR must be found in raid and can't be bought. PvE mode uses the PvE market. Price data from tarkov.dev and tarkov-market.com.</p>
+  </aside>
+</main>
+
+<div class="modal" id="mapModal" role="dialog" aria-label="Map of selected quests">
+  <div class="mhead"><h2>Selected quests</h2><div class="mtabs" id="mtabs"></div><button class="lbl-toggle" id="lblToggle" aria-pressed="true">Labels: on</button><button class="btn mclose" id="mclose">Close</button></div>
+  <div class="mbody"><div id="leaf"></div><div class="legend" id="legend"></div></div>
+</div>
+
+<script>
+const API='https://api.tarkov.dev/graphql';
+const ITEM='id name shortName iconLink link wikiLink avg24hPrice lastLowPrice types buyFor{priceRUB vendor{name normalizedName ... on TraderOffer{minTraderLevel}}}';
+const QUERY=`query Tasks($mode:GameMode){ tasks(gameMode:$mode){
+  id name normalizedName minPlayerLevel experience wikiLink kappaRequired lightkeeperRequired factionName
+  trader{name} map{name normalizedName}
+  taskRequirements{task{id name} status}
+  traderRequirements{trader{name} requirementType value}
+  objectives{ id type description optional maps{name normalizedName}
+    ... on TaskObjectiveBasic{ requiredKeys{${ITEM}} zones{id map{normalizedName} position{x y z} outline{x y z}} }
+    ... on TaskObjectiveExtract{ requiredKeys{${ITEM}} exitName }
+    ... on TaskObjectiveItem{ items{${ITEM}} count foundInRaid requiredKeys{${ITEM}} zones{id map{normalizedName} position{x y z} outline{x y z}} }
+    ... on TaskObjectiveMark{ markerItem{${ITEM}} requiredKeys{${ITEM}} zones{id map{normalizedName} position{x y z} outline{x y z}} }
+    ... on TaskObjectiveQuestItem{ questItem{id name iconLink} count requiredKeys{${ITEM}} possibleLocations{map{name normalizedName} positions{x y z}} zones{id map{normalizedName} position{x y z} outline{x y z}} }
+    ... on TaskObjectiveUseItem{ useAny{${ITEM}} count requiredKeys{${ITEM}} zones{id map{normalizedName} position{x y z} outline{x y z}} }
+    ... on TaskObjectiveShoot{ count targetNames usingWeapon{name} wearing{name} requiredKeys{${ITEM}} zones{id map{normalizedName} position{x y z} outline{x y z}} }
+    ... on TaskObjectiveBuildItem{ item{name} }
+  }
+  finishRewards{ items{item{name} count} offerUnlock{trader{name} level item{name}} traderStanding{trader{name} standing} }
+}}`;
+
+let mode='regular', tasks=[], byId={}, selected=new Set(), flags=new Set(), open=new Set(), hidden=new Set();
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const rub=n=>n==null?'—':'₽'+Math.round(n).toLocaleString();
+
+function load(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
+function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+selected=new Set(load('tqp.sel',[])); hidden=new Set(load('tqp.hidden',[])); mode=load('tqp.mode','regular');
+
+function useData(list,when,fromCache){
+  tasks=list; byId={}; tasks.forEach(t=>{byId[t.id]=t; t.kit=buildKit(t)});
+  fillSelects();
+  dataStatus=`${tasks.length} quests · ${fromCache?'cached copy from':'updated'} ${new Date(when).toLocaleString()}`;
+  setStatus(); render();
+}
+let dataStatus='',tmStatus='',tm={};
+function setStatus(){$('#status').textContent=[dataStatus,tmStatus].filter(Boolean).join(' · ');}
+
+// Tarkov Market fallback: fresh flea prices matched by game item id (bsgId)
+async function fetchTM(){
+  const key=$('#tmkey').value.trim(); save('tqp.tmkey',key);
+  if(!key){tm={};tmStatus='';setStatus();return;}
+  const ck='tqp.tm.'+mode, c=load(ck,null);
+  if(c&&Date.now()-c.when<5*60*1000){applyTM(c);return;}
+  tmStatus='Loading Tarkov Market prices…';setStatus();
+  try{
+    const r=await fetch(`https://api.tarkov-market.app/api/v1/${mode==='pve'?'pve/':''}items/all?x-api-key=${encodeURIComponent(key)}`);
+    if(r.status===401) throw new Error('Tarkov Market rejected the key');
+    if(r.status===429) throw new Error('Tarkov Market rate limit, wait a minute');
+    if(!r.ok) throw new Error('Tarkov Market HTTP '+r.status);
+    const arr=await r.json();
+    const map={}; arr.forEach(i=>{if(i.bsgId&&i.haveMarketData&&i.avg24hPrice>0)map[i.bsgId]={avg:i.avg24hPrice,last:i.price,updated:i.updated}});
+    const rec={when:Date.now(),map}; save(ck,rec); applyTM(rec);
+  }catch(e){tm={};tmStatus='Tarkov Market: '+e.message;setStatus();}
+}
+function applyTM(rec){tm=rec.map;tmStatus=`${Object.keys(tm).length} Tarkov Market prices from ${new Date(rec.when).toLocaleTimeString()}`;setStatus();tasks.forEach(t=>t.kit=buildKit(t));render();}
+
+// Primary source: the same pre-built JSON the tarkov.dev site reads.
+const JSONAPI='https://json.tarkov.dev/';
+async function getJson(path){const r=await fetch(JSONAPI+path,{headers:{Accept:'application/json'}});if(!r.ok)throw new Error(`json.tarkov.dev ${path}: HTTP ${r.status}`);return r.json();}
+async function fetchJsonTasks(){
+  const [tk,tkEn,it,itEn,tr,trEn,mp,mpEn]=await Promise.all(['tasks','tasks_en','items','items_en','traders','traders_en','maps','maps_en'].map(p=>getJson(`${mode}/${p}`)));
+  const T=Object.assign({},tkEn.data||{},itEn.data||{},trEn.data||{},mpEn.data||{});
+  const tx=s=>typeof s==='string'?(T[s]??s):s;
+  const rid=r=>typeof r==='string'?r:r?.id;
+  const rawItems=it.data.items||it.data, traders=tr.data.traders||tr.data, maps=mp.data.maps||mp.data, rawTasks=tk.data.tasks||tk.data, qItems=tk.data.questItems||{};
+  const itemCache={};
+  const item=ref=>{const id=rid(ref);if(!id)return null;if(itemCache[id])return itemCache[id];const raw=rawItems[id];if(!raw)return null;
+    return itemCache[id]={id,name:tx(raw.name),shortName:tx(raw.shortName),iconLink:raw.iconLink,link:raw.link,wikiLink:raw.wikiLink,avg24hPrice:raw.avg24hPrice,lastLowPrice:raw.lastLowPrice,types:raw.types||[],
+      buyFor:(raw.buyFromTrader||[]).map(o=>{const t=traders[o.trader]||{};return {priceRUB:o.priceRUB,vendor:{name:tx(t.name)||'Trader',normalizedName:t.normalizedName||'trader',minTraderLevel:o.minTraderLevel}}})};};
+  const mapObj=ref=>{const m=maps[rid(ref)];return m?{name:tx(m.name),normalizedName:m.normalizedName}:null};
+  const trader=ref=>({name:tx(traders[rid(ref)]?.name)||'Unknown'});
+  const keys2=arr=>(arr||[]).map(alt=>(Array.isArray(alt)?alt:[alt]).map(item).filter(Boolean)).filter(a=>a.length);
+  const list=Object.values(rawTasks).map(t=>({
+    id:t.id,name:tx(t.name),normalizedName:t.normalizedName,minPlayerLevel:t.minPlayerLevel,experience:t.experience||0,wikiLink:t.wikiLink,
+    kappaRequired:!!t.kappaRequired,lightkeeperRequired:!!t.lightkeeperRequired,factionName:t.factionName,
+    trader:trader(t.trader),map:t.map?mapObj(t.map):null,
+    taskRequirements:(t.taskRequirements||[]).map(r=>({task:{id:rid(r.task),name:tx(rawTasks[rid(r.task)]?.name)||'?'},status:r.status||[]})),
+    traderRequirements:(t.traderRequirements||[]).map(r=>({trader:trader(r.trader),requirementType:r.requirementType,value:r.value})),
+    neededKeys:(t.neededKeys||[]).map(nk=>({keys:(nk.keys||[]).map(item).filter(Boolean),map:mapObj(nk.map)})),
+    objectives:(t.objectives||[]).map(o=>({id:o.id,type:o.type,description:tx(o.description),optional:!!o.optional,
+      maps:(o.maps||[]).map(mapObj).filter(Boolean),requiredKeys:keys2(o.requiredKeys),
+      items:(o.items||(o.item?[o.item]:[])).map(item).filter(Boolean),count:o.count,foundInRaid:!!o.foundInRaid,
+      markerItem:o.markerItem?item(o.markerItem):null,useAny:(o.useAny||[]).map(item).filter(Boolean),exitName:o.exitName,
+      questItem:o.questItem?{id:rid(o.questItem),name:tx(qItems[rid(o.questItem)]?.name)||'Quest item',iconLink:qItems[rid(o.questItem)]?.iconLink}:null,zones:(o.zones||[]).map(z=>({id:rid(z),name:z.name,mapNorm:mapObj(z.map)?.normalizedName,position:z.position,outline:z.outline})).filter(z=>z.id),
+      possibleLocations:(o.possibleLocations||[]).map(p=>({map:mapObj(p.map),positions:p.positions||[]})).filter(p=>p.map)})),
+    finishRewards:{items:(t.finishRewards?.items||[]).map(r=>({item:{name:item(r.item)?.name||'?'},count:r.count})),
+      offerUnlock:(t.finishRewards?.offerUnlock||[]).map(r=>({trader:trader(r.trader),level:r.level,item:{name:item(r.item)?.name||'?'}})),
+      traderStanding:(t.finishRewards?.traderStanding||[]).map(r=>({trader:trader(r.trader),standing:r.standing}))}
+  }));
+  if(!list.length)throw new Error('json.tarkov.dev returned no quests');
+  return list;
+}
+async function fetchGraphqlTasks(){
+  // No Content-Type header on purpose: keeps it a simple CORS request (no preflight), same as the tarkov.dev site
+  const r=await fetch(API,{method:'POST',headers:{Accept:'application/json'},body:JSON.stringify({query:QUERY,variables:{mode}})});
+  if(!r.ok) throw new Error(`GraphQL API HTTP ${r.status}`);
+  const j=await r.json();
+  if(j.errors) throw new Error(j.errors.map(e=>typeof e==='string'?e:e.message).join('; '));
+  if(!j.data?.tasks?.length) throw new Error('GraphQL API returned no quests');
+  return j.data.tasks;
+}
+
+async function fetchTasks(attempt=1){
+  $('#status').textContent=attempt>1?`Retrying (${attempt}/3)…`:'Loading quests…';
+  let errs=[];
+  for(const [name,fn] of [['json.tarkov.dev',fetchJsonTasks],['api.tarkov.dev',fetchGraphqlTasks]]){
+    try{
+      const list=await fn(); const when=Date.now();
+      useData(list,when,false); dataStatus+=` via ${name}`; setStatus();
+      try{localStorage.setItem('tqp.cache.'+mode,JSONstringifyLite({when,tasks:list}))}catch(e){}
+      fetchTM(); return;
+    }catch(e){errs.push(`${name}: ${e.message}`);console.warn(e);}
+  }
+  if(attempt<3){await new Promise(res=>setTimeout(res,2500*attempt));return fetchTasks(attempt+1);}
+  const c=load('tqp.cache.'+mode,null);
+  const why='Both tarkov.dev data sources failed ('+esc(errs.join(' | '))+'). Check status.tarkov.dev or their Discord.';
+  if(c?.tasks?.length){
+    useData(c.tasks,c.when,true);
+    $('#list').insertAdjacentHTML('afterbegin',`<div class="err"><b>Showing your last saved copy.</b> ${why} ${$('#tmkey').value.trim()?'Flea prices are being refreshed from Tarkov Market instead.':'Prices may be stale; add a Tarkov Market API key above to refresh flea prices, or hit Refresh prices once tarkov.dev is back.'}</div>`);
+    fetchTM();
+  }else{
+    $('#status').textContent='Could not load';
+    $('#list').innerHTML=`<div class="err"><b>Couldn't load quest data.</b> ${why}<br><span class="small">Quest structure only comes from tarkov.dev, so the app needs one successful load; after that a copy is kept and Tarkov Market can supply prices during outages. If you're viewing this inside a sandboxed preview, download the file and open it directly in your browser. An ad blocker can also block the request.</span> <button class="btn" onclick="fetchTasks()" style="margin-left:8px">Try again</button></div>`;
+  }
+}
+function JSONstringifyLite(o){return JSON.stringify(o)}
+
+// Best price: cheapest of flea avg and trader cash offers
+function price(it){
+  const offers=(it.buyFor||[]).filter(o=>o.priceRUB>0);
+  const trader=offers.filter(o=>o.vendor.normalizedName!=='flea-market').sort((a,b)=>a.priceRUB-b.priceRUB)[0];
+  const t=tm[it.id];
+  const flea=t?t.avg:(it.avg24hPrice||it.lastLowPrice||null);
+  let best=null,src='';
+  if(flea){best=flea;src=t?'Flea avg (Tarkov Market)':'Flea avg'}
+  if(trader&&(best==null||trader.priceRUB<best)){best=trader.priceRUB;src=`${trader.vendor.name} LL${trader.vendor.minTraderLevel||1}`}
+  return {best,src,flea,trader};
+}
+
+// Extract keys, markers, hand-ins, quest items and locations for one task
+function buildKit(t){
+  t.objectives.forEach(o=>(o.zones||[]).forEach(z=>{if(!z.mapNorm&&z.map?.normalizedName)z.mapNorm=z.map.normalizedName}));
+  const keys={},marks={},hand={},qitems=[],maps={};
+  const addKey=(arr)=>(arr||[]).forEach(alt=>(alt||[]).forEach((k,i)=>{ if(!k)return; const e=keys[k.id]||(keys[k.id]={item:k,alt:alt.length>1});}));
+  (t.neededKeys||[]).forEach(nk=>addKey([nk.keys]));
+  t.objectives.forEach(o=>{
+    addKey(o.requiredKeys);
+    if(o.type==='mark'&&o.markerItem){const m=marks[o.markerItem.id]||(marks[o.markerItem.id]={item:o.markerItem,count:0});m.count++;}
+    if(o.type==='useItem'&&o.useAny?.length){const it=o.useAny[0];const m=marks[it.id]||(marks[it.id]={item:it,count:0,alts:o.useAny.slice(1).map(x=>x.shortName)});m.count+=o.count||1;}
+    if(o.type==='giveItem'&&o.items?.length){const it=o.items[0];const key=it.id+(o.foundInRaid?':fir':'');const h=hand[key]||(hand[key]={item:it,count:0,fir:o.foundInRaid,alts:o.items.slice(1).map(x=>x.shortName)});h.count+=o.count||1;}
+    if(o.type==='findQuestItem'&&o.questItem){qitems.push({name:o.questItem.name,count:o.count,maps:(o.possibleLocations||[]).map(p=>p.map?.name).filter(Boolean)});}
+    (o.maps||[]).forEach(m=>{(maps[m.name]||(maps[m.name]={norm:m.normalizedName,objs:[]})).objs.push(o)});
+  });
+  if(t.map&&!Object.keys(maps).length) maps[t.map.name]={norm:t.map.normalizedName,objs:t.objectives};
+  let cost=0;
+  Object.values(keys).forEach(k=>{const p=price(k.item).best;if(p)cost+=p});
+  Object.values(marks).forEach(m=>{const p=price(m.item).best;if(p)cost+=p*m.count});
+  Object.values(hand).forEach(h=>{if(!h.fir){const p=price(h.item).best;if(p)cost+=p*h.count}});
+  return {keys,marks,hand,qitems,maps,cost};
+}
+
+function fillSelects(){
+  const traders=[...new Set(tasks.map(t=>t.trader.name))].sort();
+  const maps=[...new Set(tasks.flatMap(t=>Object.keys(t.kit.maps)))].sort();
+  $('#trader').innerHTML='<option value="">All traders</option>'+traders.map(x=>`<option>${esc(x)}</option>`).join('');
+  $('#mapf').innerHTML='<option value="">All maps</option>'+maps.map(x=>`<option>${esc(x)}</option>`).join('');
+}
+
+function visible(){
+  const q=$('#q').value.trim().toLowerCase(), tr=$('#trader').value, mp=$('#mapf').value, lv=+$('#lvl').value||99, sort=$('#sort').value;
+  let list=tasks.filter(t=>{
+    if(tr&&t.trader.name!==tr)return false;
+    if(mp&&!t.kit.maps[mp])return false;
+    if((t.minPlayerLevel||0)>lv)return false;
+    if(flags.has('kappa')&&!t.kappaRequired)return false;
+    if(flags.has('lk')&&!t.lightkeeperRequired)return false;
+    if(flags.has('keys')&&!Object.keys(t.kit.keys).length)return false;
+    if(flags.has('mark')&&!Object.keys(t.kit.marks).length)return false;
+    if(flags.has('selected')&&!selected.has(t.id))return false;
+    if(flags.has('hidden')?!hidden.has(t.id):hidden.has(t.id))return false;
+    if(q){
+      const hay=[t.name,t.trader.name,...Object.values(t.kit.keys).map(k=>k.item.name),...Object.values(t.kit.hand).map(h=>h.item.name),...Object.values(t.kit.marks).map(m=>m.item.name)].join(' ').toLowerCase();
+      if(!hay.includes(q))return false;
+    }
+    return true;
+  });
+  const cmp={level:(a,b)=>(a.minPlayerLevel||0)-(b.minPlayerLevel||0)||a.name.localeCompare(b.name),
+    name:(a,b)=>a.name.localeCompare(b.name),
+    trader:(a,b)=>a.trader.name.localeCompare(b.trader.name)||(a.minPlayerLevel||0)-(b.minPlayerLevel||0),
+    xp:(a,b)=>b.experience-a.experience, cost:(a,b)=>b.kit.cost-a.kit.cost}[sort];
+  return list.sort(cmp);
+}
+
+function renderList(){
+  const list=visible();
+  $('#count').textContent=`${list.length} shown · ${selected.size} selected · ${hidden.size} hidden`;
+  if(!list.length){$('#list').innerHTML='<div class="empty">No quests match these filters.</div>';return;}
+  $('#list').innerHTML=list.map(t=>{
+    const k=t.kit, nk=Object.keys(k.keys).length, nm=Object.keys(k.marks).length;
+    const tags=[];
+    if(nk)tags.push(`<span class="tag key">${nk} key${nk>1?'s':''}</span>`);
+    if(nm)tags.push(`<span class="tag mark">markers/tools</span>`);
+    if(t.kappaRequired)tags.push('<span class="tag kappa">Kappa</span>');
+    if(t.lightkeeperRequired)tags.push('<span class="tag lk">Lightkeeper</span>');
+    if(k.cost)tags.push(`<span class="tag">${rub(k.cost)}</span>`);
+    return `<div class="quest ${selected.has(t.id)?'sel':''} ${open.has(t.id)?'open':''} ${hidden.has(t.id)?'hid':''}" data-id="${t.id}">
+      <div class="qrow">
+        <input type="checkbox" ${selected.has(t.id)?'checked':''} aria-label="Select ${esc(t.name)}">
+        <div><div class="qname">${esc(t.name)}</div>
+          <div class="qmeta"><span>${esc(t.trader.name)}</span><span>Lv ${t.minPlayerLevel||1}</span><span>${Object.keys(k.maps).join(', ')||'Any map'}</span><span>${t.experience.toLocaleString()} XP</span></div></div>
+        <div class="tags">${tags.join('')}</div>
+        <button class="eye" data-eye="${t.id}" title="${hidden.has(t.id)?'Unhide this quest':'Hide this quest (completed)'}" aria-label="${hidden.has(t.id)?'Unhide':'Hide'} ${esc(t.name)}">${hidden.has(t.id)?'&#128065;&#65039;':'&#128065;'}</button>
+      </div>
+      ${open.has(t.id)?detail(t):'<div class="qbody"></div>'}
+    </div>`;
+  }).join('');
+}
+
+function detail(t){
+  const k=t.kit;
+  const obj=t.objectives.map(o=>{const norm=(o.maps[0]||t.map)?.normalizedName;const pl=pin(o,norm);return `<li class="${o.optional?'opt':''}">${esc(o.description)}${pl?` <a href="${pl}" target="_blank" rel="noopener" title="Zoom the map to this spot">📍</a>`:''}${o.type==='giveItem'&&o.foundInRaid?' <span class="fir">FIR</span>':''}${o.optional?' (optional)':''}${(o.requiredKeys||[]).length?` · <span class="small">key: ${o.requiredKeys.map(a=>a.map(x=>esc(x.shortName)).join(' or ')).join(', ')}</span>`:''}</li>`}).join('');
+  const pre=t.taskRequirements.map(r=>`<li>${esc(r.task.name)} <span class="small">(${r.status.join('/')})</span></li>`).join('')+t.traderRequirements.map(r=>`<li>${esc(r.trader.name)} ${esc(r.requirementType||'level')} ${r.value??''}</li>`).join('');
+  const rw=t.finishRewards||{};
+  const rewards=[...(rw.items||[]).map(i=>`${i.count}× ${esc(i.item.name)}`),...(rw.offerUnlock||[]).map(o=>`Unlocks ${esc(o.item.name)} at ${esc(o.trader.name)} LL${o.level}`),...(rw.traderStanding||[]).map(s=>`${esc(s.trader.name)} rep ${s.standing>0?'+':''}${s.standing}`)];
+  const kitRows=[...Object.values(k.keys).map(x=>keyLine(x.item,'Key')),...Object.values(k.marks).map(x=>keyLine(x.item,x.count+'×')),...Object.values(k.hand).map(x=>keyLine(x.item,x.count+'×'+(x.fir?' FIR':'')))];
+  const red='https://www.reddit.com/r/EscapefromTarkov/search/?q='+encodeURIComponent(t.name)+'&sort=new';
+  return `<div class="qbody">
+    <h4>Objectives</h4><ul>${obj}</ul>
+    ${kitRows.length?`<h4>Bring</h4><ul>${kitRows.join('')}</ul>`:''}
+    ${k.qitems.length?`<h4>Find in raid</h4><ul>${k.qitems.map(q=>`<li>${q.count}× ${esc(q.name)}${q.maps.length?` <span class="small">(${q.maps.join(', ')})</span>`:''}</li>`).join('')}</ul>`:''}
+    ${pre?`<h4>Requires first</h4><ul>${pre}</ul>`:''}
+    ${rewards.length?`<h4>Rewards</h4><ul>${rewards.map(r=>`<li>${r}</li>`).join('')}</ul>`:''}
+    <div class="links">
+      ${t.wikiLink?`<a href="${esc(t.wikiLink)}" target="_blank" rel="noopener">Wiki guide</a>`:''}
+      <a href="https://tarkov.dev/task/${esc(t.normalizedName)}" target="_blank" rel="noopener">tarkov.dev page</a>
+      ${Object.entries(k.maps).map(([n,m])=>`<a href="https://tarkov.dev/map/${esc(m.norm)}" target="_blank" rel="noopener">${esc(n)} map</a>`).join('')}
+      <a href="${red}" target="_blank" rel="noopener">Recent Reddit threads</a>
+    </div></div>`;
+}
+function pin(o,norm){const ids=(o.zones||[]).map(z=>z.id).filter(Boolean);if(!ids.length&&o.type==='findQuestItem'&&o.questItem?.id)ids.push(o.questItem.id);return ids.length&&norm?`https://tarkov.dev/map/${esc(norm)}?q=${ids.map(encodeURIComponent).join(',')}`:'';}
+function keyLine(it,label){const p=price(it);return `<li>${esc(label)} <a href="${esc(it.link||it.wikiLink||'#')}" target="_blank" rel="noopener">${esc(it.name)}</a> <span class="small">${p.best?rub(p.best)+' · '+esc(p.src):'no price data'}</span></li>`}
+
+function renderKit(){
+  const sel=[...selected].map(id=>byId[id]).filter(Boolean);
+  if(!sel.length){$('#total').textContent='Nothing selected';$('#kitBody').innerHTML='<p class="note">Tick quests on the left. Keys, markers, items and a per-map plan will appear here with current prices.</p>';return;}
+  const keys={},marks={},hand={},qitems=[],maps={}; let total=0;
+  sel.forEach(t=>{
+    Object.values(t.kit.keys).forEach(k=>{const e=keys[k.item.id]||(keys[k.item.id]={item:k.item,quests:[],alt:k.alt});e.quests.push(t.name)});
+    Object.values(t.kit.marks).forEach(m=>{const e=marks[m.item.id]||(marks[m.item.id]={item:m.item,count:0,quests:[],alts:m.alts});e.count+=m.count;e.quests.push(t.name)});
+    Object.values(t.kit.hand).forEach(h=>{const key=h.item.id+(h.fir?':fir':'');const e=hand[key]||(hand[key]={item:h.item,count:0,fir:h.fir,quests:[],alts:h.alts});e.count+=h.count;e.quests.push(t.name)});
+    t.kit.qitems.forEach(q=>qitems.push({...q,quest:t.name}));
+    Object.entries(t.kit.maps).forEach(([n,m])=>{const e=maps[n]||(maps[n]={norm:m.norm,rows:[]});m.objs.forEach(o=>e.rows.push({q:t.name,d:o.description,opt:o.optional,pin:pin(o,m.norm)}))});
+  });
+  const row=(it,sub,qty,cls='')=>{const p=price(it);const line=p.best?rub(p.best*(qty||1)):'—';if(p.best)total+=p.best*(qty||1);
+    return `<div class="item ${cls}">${it.iconLink?`<img src="${esc(it.iconLink)}" alt="">`:'<span></span>'}<div><div class="iname"><a href="${esc(it.link||it.wikiLink||'#')}" target="_blank" rel="noopener">${esc(it.name)}</a></div><div class="isub">${sub}</div></div><div class="iprice"><b>${line}</b>${p.best?esc(p.src):'no price'}</div></div>`};
+  let h='';
+  const K=Object.values(keys);
+  if(K.length)h+=`<h3>Keys <span>${K.length}</span></h3>`+K.map(k=>row(k.item,esc(k.quests.join(', '))+(k.alt?' · one of several works':''),1,'keyrow')).join('');
+  const M=Object.values(marks);
+  if(M.length)h+=`<h3>Markers and tools <span>${M.length}</span></h3>`+M.map(m=>row(m.item,`${m.count} needed · ${esc(m.quests.join(', '))}${m.alts?.length?' · or '+esc(m.alts.join(', ')):''}`,m.count)).join('');
+  const buy=Object.values(hand).filter(x=>!x.fir), fir=Object.values(hand).filter(x=>x.fir);
+  if(buy.length)h+=`<h3>Hand in (buyable) <span>${buy.length}</span></h3>`+buy.map(x=>row(x.item,`${x.count}× · ${esc(x.quests.join(', '))}${x.alts?.length?' · or '+esc(x.alts.join(', ')):''}`,x.count)).join('');
+  if(fir.length)h+=`<h3>Hand in, found in raid <span>${fir.length}</span></h3>`+fir.map(x=>`<div class="item">${x.item.iconLink?`<img src="${esc(x.item.iconLink)}" alt="">`:'<span></span>'}<div><div class="iname"><a href="${esc(x.item.link||'#')}" target="_blank" rel="noopener">${esc(x.item.name)}</a></div><div class="isub">${x.count}× · ${esc(x.quests.join(', '))}${x.alts?.length?' · or '+esc(x.alts.join(', ')):''}</div></div><div class="iprice"><span class="fir">FIR</span></div></div>`).join('');
+  if(qitems.length)h+=`<h3>Quest items to pick up <span>${qitems.length}</span></h3>`+qitems.map(q=>`<div class="item"><span></span><div><div class="iname">${esc(q.name)}</div><div class="isub">${q.count}× · ${esc(q.quest)}${q.maps.length?' · '+esc(q.maps.join(', ')):''}</div></div><div></div></div>`).join('');
+  const MP=Object.entries(maps).sort((a,b)=>b[1].rows.length-a[1].rows.length);
+  let plan='';
+  if(MP.length)plan+=`<h3>Raid plan by map <span>${MP.length} maps</span></h3>`+MP.map(([n,m])=>`<div class="map"><div class="mname">${esc(n)} <span>${MAPCFG[m.norm]?`<button class="btn" style="padding:2px 9px;font-size:12px" data-showmap="${esc(m.norm)}">Show on map</button> `:''}<a href="https://tarkov.dev/map/${esc(m.norm)}" target="_blank" rel="noopener" class="small">tarkov.dev</a></span></div><ul>${m.rows.map(r=>`<li class="${r.opt?'opt':''}"><span class="qn">${esc(r.q)}:</span> ${esc(r.d)}${r.pin?` <a href="${r.pin}" target="_blank" rel="noopener" title="Zoom the map to this spot">📍</a>`:''}</li>`).join('')}</ul></div>`).join('');
+  $('#kitBody').innerHTML=`<div class="kitgrid"><div>${h||'<p class="note">Nothing to bring for these quests.</p>'}</div><div>${plan}</div></div>`;
+  $('#total').textContent=`${sel.length} quests · about ${rub(total)} to buy`;
+}
+function render(){renderList();renderKit();}
+
+// ---------- In-app map viewer (only the selected quests) ----------
+const MAPCFG={"streets-of-tarkov":{"svgPath":"https://assets.tarkov.dev/maps/svg/StreetsOfTarkov.svg","svgLayer":"Ground_Level","coordinateRotation":180,"transform":[0.38,0,0.38,0],"bounds":[[323,-295],[-280,532]],"minZoom":1,"maxZoom":5},"ground-zero":{"svgPath":"https://assets.tarkov.dev/maps/svg/GroundZero.svg","svgLayer":"Ground_Level","tilePath":"https://assets.tarkov.dev/maps/groundzero/main_summer/{z}/{x}/{y}.png","tileSize":256,"coordinateRotation":180,"transform":[0.524,167.3,0.524,65.1],"bounds":[[249,-124],[-99,364]],"minZoom":1,"maxZoom":6},"customs":{"svgPath":"https://assets.tarkov.dev/maps/svg/Customs.svg","svgLayer":"Ground_Level","tilePath":"https://assets.tarkov.dev/maps/customs_0.16/main/{z}/{x}/{y}.png","tileSize":256,"coordinateRotation":180,"transform":[0.239,168.65,0.239,136.35],"bounds":[[698,-307],[-372,237]],"minZoom":2,"maxZoom":6},"factory":{"svgPath":"https://assets.tarkov.dev/maps/svg/Factory.svg","svgLayer":"Ground_Floor","tilePath":"https://assets.tarkov.dev/maps/factory/main/{z}/{x}/{y}.png","tileSize":256,"coordinateRotation":90,"transform":[1.629,119.9,1.629,139.3],"bounds":[[77,-64.5],[-65.5,67.4]],"minZoom":1,"maxZoom":6},"icebreaker":{"tilePath":"https://assets.tarkov.dev/maps/icebreaker/06_infirmary/{z}/{x}/{y}.png","tileSize":256,"coordinateRotation":180,"transform":[2.0,125.0,3.5,91.0],"bounds":[[77,-64.5],[-65.5,67.4]],"minZoom":1,"maxZoom":5},"interchange":{"svgPath":"https://assets.tarkov.dev/maps/svg/Interchange.svg","svgLayer":"Ground_Level","tilePath":"https://assets.tarkov.dev/maps/interchange/main/{z}/{x}/{y}.png","tileSize":256,"coordinateRotation":180,"transform":[0.265,150.6,0.265,134.6],"bounds":[[598,-442],[-433,426]],"minZoom":1,"maxZoom":6},"the-lab":{"tilePath":"https://assets.tarkov.dev/maps/labs_v4/1st/{z}/{x}/{y}.png","tileSize":175,"coordinateRotation":270,"transform":[0.575,281.2,0.575,193.7],"bounds":[[-80,-477],[-287,-193]],"minZoom":2,"maxZoom":6},"the-labyrinth":{"tilePath":"https://assets.tarkov.dev/maps/labyrinth/main/{z}/{x}/{y}.png","coordinateRotation":270,"transform":[2.115,85.5,2.115,128.0],"bounds":[[-52,-37],[53,76]],"minZoom":1,"maxZoom":6},"lighthouse":{"svgPath":"https://assets.tarkov.dev/maps/svg/Lighthouse.svg","svgLayer":"Ground_Level","coordinateRotation":180,"transform":[0.2,0,0.2,0],"bounds":[[515,-998],[-545,725]],"minZoom":1,"maxZoom":6},"reserve":{"svgPath":"https://assets.tarkov.dev/maps/svg/Reserve.svg","svgLayer":"Ground_Level","tilePath":"https://assets.tarkov.dev/maps/reserve/main/{z}/{x}/{y}.png","coordinateRotation":180,"transform":[0.395,122.0,0.395,137.65],"bounds":[[289,-293],[-303,244]],"svgBounds":[[289,-274],[-303,272]],"minZoom":2,"maxZoom":6},"shoreline":{"svgPath":"https://assets.tarkov.dev/maps/svg/Shoreline.svg","svgLayer":"Ground_Level","tilePath":"https://assets.tarkov.dev/maps/shoreline/main_summer/{z}/{x}/{y}.png","coordinateRotation":180,"transform":[0.16,83.2,0.16,111.1],"bounds":[[504,-415],[-1056,618]],"minZoom":2,"maxZoom":6},"terminal":{"svgPath":"https://assets.tarkov.dev/maps/svg/Terminal.svg","svgLayer":"Ground_Level","coordinateRotation":180,"transform":[0.2,0,0.2,0],"bounds":[[463,-580],[-433,475]],"minZoom":2,"maxZoom":6},"woods":{"svgPath":"https://assets.tarkov.dev/maps/svg/Woods.svg","svgLayer":"Ground_Level","tilePath":"https://assets.tarkov.dev/maps/woods/main_0.16/{z}/{x}/{y}.png","coordinateRotation":180,"transform":[0.1855,112.95,0.1855,167.85],"bounds":[[646,-914],[-761,442]],"minZoom":2,"maxZoom":6}};
+const MAPLABELS={"streets-of-tarkov":[[9,308,"Primorsky Ave.",-90,80],[9,104,"Primorsky Ave.",-90,80],[9,-80,"Primorsky Ave.",-90,80],[125,10,"Kilmov St.",0,80],[-104,28,"Kilmov St.",10,80],[-125,210,"Nikitskaya St.",0,80],[-112,361,"Verhnyaya St.",0,80],[-200,290,"Malevecha St.",-64,80],[111,251,"Chekannaya St.",0,80],[-101,441,"Nizhnyaya St.",0,80],[174,430,"Razvedchikov St.",-30,80],[140,150,"Zmejskij Alley",-68,80],[232,100,"Kamchatskaya St.",-90,80],[-128,-35,"Kilmov Shopping Mall",0,90],[-45,-52,"Beluga",0,90],[99,-71,"Cardinal Apartments",0,90],[230,295,"Construction",0,90],[66,305,"Lexos",0,90],[140,300,"Sparja Grocery",0,90],[-175,400,"Cinema",0,90],[-218,135,"Shestyorochka",0,90],[-35,64,"Pinewood Hotel",0,90],[65,398,"Teppakot / Koener",0,70],[140,362,"Concordia",0,70],[89,-20,"Cardinal Bank",0,70],[239,-60,"LERM Expo",0,70],[-64,166,"Sparja Express",0,70],[-30,138,"Burger Spot",0,70],[42,97,"Post Office",0,70],[42,160,"Pharmacy 1",0,70],[-173,226,"Office",0,70],[-197,340,"Corner Restaurant",0,70],[-43,335,"Pharmacy 2",0,70],[90,-277,"Pharmacy 3",0,70],[67,230,"Tarbank",0,70],[211,129,"School",0,70],[222,173,"Vet Clinic",0,70],[-212,300,"Hive",0,70],[-223,279,"Family Market",0,70],[-200,248,"Marked Hotel",0,70],[-175,297,"South Hotel",0,70],[-119,287,"Abandon Factory",0,70],[-80,235,"Diner",0,70],[-13,244,"Primorskij 49",0,70],[39,230,"Prestigio Cafe",-45,60],[-70,343,"Bilbo Coffee",0,60]],"ground-zero":[[-50,0,"TerraGroup",0,100],[150,1,"Skyside",0,100],[141,142,"Fusion",0,100],[14,201,"Empire",0,100],[115,285,"Capital Insight",0,100],[2,324,"Nakatani",0,100],[80,-118,"Elemental Global",0,100],[115,104,"Oasis",0,70],[115,30,"ASAP Winery",0,70],[43,150,"Tarbank",0,70],[58,234,"GAGRIN Hotel",0,70],[97,223,"M Showroom",0,70],[-13,48,"Science Office",0,60]],"customs":[[-215,-119,"Big Red",0,100],[200,150,"Dorms",0,100],[404,31,"New Gas",0,100],[331,-173,"Old Gas",0,100],[201,-127,"Fortress",0,100],[83,-153,"Crackhouse",0,100],[567,-67,"Streamer House",0,90],[-69,9,"Main Bridge","6",90],[110,85,"Sniper Hill",0,90],[-288,-134,"Storage",0,90],[-211,-219,"Trailer Park",0,90],[-66,46,"Junk Bridge",0,90],[106,-90,"Repair Shop",0,90],[491,63,"Sniper Ridge","5",100],[75,-9,"Old Construction",0,90],[200,-13,"Skeleton","-9",100],[390,-94,"Warehouse 3",0,100],[472,-67,"Depot",0,100],[555,-118,"Warehouse 7",0,100],[572,0,"Military Checkpoint",0,100],[238,53,"Bus Station",0,90],[333,-67,"Warehouse 4",0,100],[497,110,"Powerline Tower",0,100],[46,-59,"Warehouse 17",0,90]],"factory":[[21,39,"Office Building",0,80],[15.5,39,"Main Office",0,80],[24.5,39,"Breach Room",0,80],[30.5,39,"Locked Office",0,80],[35,39,"North Stairs",0,80],[9,39,"South Stairs",0,80],[34,26,"Sky Bridge",0,80],[29.5,17,"Connector",0,80],[29,41,"Locker Rooms",0,80],[15,41,"Sinks",0,80],[20,42,"Hole",0,80],[-3,37,"Platform",0,80],[-21,27,"Servers",0,80],[-18,-29,"Med Tent",0,80],[4.5,10.5,"Silos",0,100],[30,-8.5,"Heli Crash",0,80],[-1,16,"Pit",0,80],[-2,-24.5,"Underground Stash",0,80],[-20.5,23,"Scav Bunker",0,80],[-18,50,"Blue Containers",0,100],[-45.5,61,"Wood Room",0,80],[68.2,-20,"Glass Hall",0,80],[56,5,"Boilers",0,80],[41,-11,"Pumping Station",0,80],[44,-36,"East Halls",0,80],[66,-42,"Forklifts",0,80],[18,4,"Rafters",0,100]],"icebreaker":[],"interchange":[[-186.4,-318.7,"Power Station",0,100],[155,-253,"Go Kart",0,80],[158,-78.5,"Four Camp",0,80],[68.2,312.9,"Cargo Containers",0,80],[-260.2,123.8,"Wall Break",0,80],[-175.5,145.1,"Ramps",0,80],[202.3,219.4,"Oli Tower",0,80],[46.5,-358.5,"Idea Tower",0,80],[263.2,-11.1,"Scav Camp",0,80],[373.5,-391.2,"Highway Construction",0,100],[33,-222,"Garage A",0,80],[47,-112,"Garage B",0,80],[0,47,"Garage C",0,80],[20,138,"Garage D",0,80],[-34,-235,"IDEA",0,80],[-115,-45,"Goshan",0,80],[-28,140,"OLI",0,80],[87,-165,"Nortex",0,65],[60,-152,"TRend",0,65],[69.5,-134,"Mode7",0,65],[19,-129,"TTS",0,65],[-38,-129,"Book Store",0,65],[91,-119,"Dino Clothes",0,65],[18,-103,"EMERCOM",0,65],[-28,-103,"Kostin",0,65],[-65,-103,"Bizarro",0,65],[92,-87,"Spiel",0,65],[-18,-87,"Voyage",0,65],[57,-66,"Viking",0,65],[13,-66,"Mantis",0,65],[-18,-72,"German",0,65],[57,-32,"The National",0,65],[13,-32,"Brutal",0,65],[-18,-25,"Kiba",0,65],[-34,-20,"Pretty Lights",0,65],[92,-18,"Telespot",0,65],[62,-12,"Revis",0,65],[19,-6,"ADIK",0,65],[-28,0.5,"Generic",0,65],[92,15,"Top Brand",0,65],[61,15,"Sports",0,65],[70,32,"Yushka",0,65],[19.5,26,"Rasmussen",0,65],[-37,26,"Avokado",0,65],[91,55,"Boots 4 Life",0,65],[61,50,"Texho",0,65],[6,49,"Dom",0,65],[38,-170,"Father & Sons",0,65],[69,-150,"Tarkovstar",0,65],[26,-149,"Eastland",0,65],[71,-130,"Arena",0,65],[54,-128,"\u0422\u0410\u0420\u0417\u0414\u0420\u0410\u0412",0,65],[20,-128,"\u041c\u0415\u0411\u0415\u041b\u042c \u041c\u041a",0,65],[69,-116,"Intourist",0,65],[-27,-103,"Burger Spot",0,65],[70,-94,"FCK",0,65],[70,-87,"McDaniels",0,65],[64,-69,"Tarducks",0,65],[43,-69,"Coffee Joy",0,65],[15,-74,"Jacob & Jacob",0,65],[-34,-79,"\u041f\u0423\u0428\u041a\u0418\u041d",0,65],[64,-34,"Sushi Huyushi",0,65],[-17,-32,"Underway",0,65],[67,-23.5,"Burger House",0,65],[-34,-24,"Philly Cute",0,65],[67,-16,"Shiccos",0,65],[17,0,"\u041c\u0423\u0417\u0415\u0419 \u0418\u0421\u0422\u041e\u0420\u0418\u0418",0,65],[92,17,"Papillon",0,65],[58,13,"\u0417\u0410\u041a\u0420\u042b\u0422\u041e \u041d\u0410 \u0420\u0415\u041c\u041e\u041d\u0422",0,60],[70,27,"\u041d\u0410-\u0421\u0412\u042f\u0417\u0418",0,65],[54,24,"\u0421\u041a\u041e\u0420\u041e \u041e\u0422\u041a\u0420\u042b\u0422\u0418\u0415",0,65],[19,26,"Figaro",0,65],[71,47,"\u0410\u041f\u0422\u0415\u041a\u0410",0,65],[53,47,"SARA",0,65],[26,46,"Urban Clothes",0,65],[91,54,"TECHLIGHT",0,65],[39,67,"Fashion Store",0,65]],"the-lab":[[-230,-400,"Parking",0,90],[-246,-379,"Vestibules #1",0,90],[-216,-379,"Vestibules #2",0,90],[-172,-342,"Main Working Area",0,90],[-148,-398,"Negotiation Room",0,90],[-130,-398,"Infirmary Lvl 1",0,90],[-130,-356,"Test Room",0,90],[-125,-308,"Server Room",0,90],[-116,-266,"Warehouse Tunnels",0,90],[-163,-269,"Warehouse",0,90],[-170,-248,"Warehouse Gate",0,90],[-207,-305,"Lecture Hall",0,90],[-221,-343,"Recreation Area",0,90],[-236,-302,"Gym",0,90],[-241,-280,"Men's Locker Room",0,90],[-232,-280,"Women's Locker Room",0,90],[-259,-366,"Boiler Room",0,90],[-260,-319,"Security Barracks",0,90],[-260,-342,"Reception",0,90],[-260,-364,"Administrative Office",0,90],[-254,-320,"Security Office",0,90],[-244,-378,"Security #1",0,90],[-215,-379,"Security #2",0,90],[-229,-343,"Conference Room",0,90],[-219,-302,"Cafeteria",0,90],[-189,-401,"Offices #1",0,90],[-149,-401,"Offices #2",0,90],[-130,-401,"Infirmary Lvl 2",0,90],[-130,-361,"Sterile Laboratory",0,90],[-169,-288,"Control Room",0,90],[-250,-281,"Corridor To Building #2",0,90]],"the-labyrinth":[],"lighthouse":[[-30,-882,"Train Yard",0,100],[-120,-841,"Drug Lab",0,100],[-65,-600,"Water Treatment",0,100],[40,-618,"Plant 1",0,100],[-97,-737,"Plant 2",0,100],[-189,-665,"Plant 3",0,100],[-182,-552,"Pipes",0,100],[18,-453,"Gunner Nest",0,100],[-177,-356,"Island",0,100],[-278,-323,"Cabins",0,100],[-162,-225,"Cottages",0,100],[-55,-288,"Convenience",0,100],[-75,-284,"Red Brick",0,100],[-151,-243,"Hillside",0,100],[125,-153,"Boathouses",0,100],[62,-60,"Dead Tree",0,100],[0,-188,"Construction",0,100],[-107,-53,"Pikes Peak Resort",0,100],[-133,100,"Grand Chalet",0,100],[-70,129,"Tennis Court",0,100],[382,496,"Lightkeeper Island",0,100],[-125,296,"Crash Site",0,100]],"reserve":[[28,-102,"K Buildings",0,100],[-25,180,"White Queen",-15,100],[-104,93,"White Pawn",14,100],[-140,-14.5,"Black Bishop",14,100],[-67,-30,"White Bishop",14,100],[-49.5,15.5,"White King",14,100],[14.5,-10.8,"Black Knight",0,100],[82.2,-30.2,"White Knight",0,100],[149,-124,"White Rook",0,100],[161,-149,"Train Station",14,80],[-165,57,"Black Pawn",-75,100],[167,-222,"Barracks",0,100],[-220,-13,"E1 Bunkers",0,100],[173,-3,"E2 Bunkers",0,100],[80,-167,"\u0434 - Warehouse Bunkers",14,100],[96,30,"Garage",-75,80],[55.5,60.6,"Mechanic",0,80],[29.7,29.5,"Gas Station",14,80],[-31,-150,"Shipping Yard",14,80],[-1,-71,"K1",14,80],[66,-90,"K2",14,80],[-5.5,-94,"K3",14,80],[60,-112,"K4",14,80],[-10.5,-115,"K5",14,80],[54,-132,"K6",14,80],[-8.5,175,"Dome",0,80],[-120,37,"Tarmac",14,80]],"shoreline":[[-258.2,-71.2,"Resort",0,100],[-215.8,178.4,"Power Station",0,100],[-189.3,420,"Gas Station",0,100],[-496,257,"Weather Station",0,100],[-708.9,93.9,"Radio Tower",0,100],[326,-118.5,"Swamp",0,100],[418.4,118,"Village",0,100],[288,144,"Cabins",0,100],[128,93,"Cottages",0,100],[-355,188,"Tank Bridge",0,100],[-338.6,525,"Pier",0,100],[216,424,"Scav Island",0,100],[-96,-6,"Bus Stop",0,100],[52,134,"Construction",0,100],[-153,-290,"Bunker",0,100],[-625,484,"Crane",0,100],[-622,-202,"Scav Farm",0,100],[-171,-83,"West Wing",0,100],[-329,-83,"East Wing",0,100],[-252,-146,"Admin",0,100]],"terminal":[],"woods":[[10,-3,"Sawmill",0,100],[-485,-390,"Scav Town",0,100],[-517,-210,"Old Sawmill",0,100],[-80,-680,"Cultist Village",0,100],[290,-475,"USEC Camp",0,100],[-188,235,"Military Camp",0,100],[-5,-515,"Ponds",0,80],[-252,-37,"Crash Site",0,80],[239,-65,"Checkpoint",0,70],[244,125,"Shack",0,70],[-16,-122,"Lumber",0,70],[-3,-74,"Cabins",0,70],[-234,357,"Bus Stop",0,70],[-327,19,"Jaeger's Camp",0,70],[85,-147,"Sniper Rock",0,70],[200,-606,"Convoy",0,70]]};
+const PALETTE=['#C9A24A','#7FB3D5','#8DB36A','#D98C6A','#D8B4E2','#6ED1C4','#E2D46A','#F08CA8','#9FB8FF','#B8D96A'];
+let leaf=null, leafLayers=[], curMap=null, labelGroup=null, showLabels=load('tqp.labels',true);
+const B=b=>L.latLngBounds([b[0][1],b[0][0]],[b[1][1],b[1][0]]);
+const LL=p=>[p.z,p.x];
+function makeCRS(cfg){
+  const tf=cfg.transform||[1,0,1,0], rot=cfg.coordinateRotation||0;
+  const rotate=(ll,deg)=>{if(!deg||(!ll.lat&&!ll.lng))return ll;const a=deg*Math.PI/180,c=Math.cos(a),s=Math.sin(a);const x=ll.lng,y=ll.lat;return L.latLng(x*s+y*c,x*c-y*s);};
+  return L.extend({},L.CRS.Simple,{transformation:new L.Transformation(tf[0],tf[1],-tf[2],tf[3]),
+    projection:L.extend({},L.Projection.LonLat,{project:ll=>L.Projection.LonLat.project(rotate(ll,rot)),unproject:pt=>rotate(L.Projection.LonLat.unproject(pt),-rot)})});
+}
+// Collect everything on one map from the selected quests
+function mapPoints(norm){
+  const out=[]; let qi=0;
+  [...selected].map(id=>byId[id]).filter(Boolean).forEach(t=>{
+    const color=PALETTE[qi%PALETTE.length]; let used=false;
+    const rows=[];
+    t.objectives.forEach(o=>{
+      const onMap=(o.maps||[]).some(m=>m.normalizedName===norm)||(!o.maps?.length&&t.map?.normalizedName===norm);
+      const pts=[];
+      (o.zones||[]).forEach(z=>{if((z.mapNorm||norm)===norm&&z.position)pts.push({pos:z.position,outline:z.outline,label:z.name})});
+      (o.possibleLocations||[]).forEach(p=>{if(p.map?.normalizedName===norm)(p.positions||[]).forEach(pp=>pts.push({pos:pp,label:'possible spawn'}))});
+      if(pts.length||onMap){rows.push({o,pts});if(pts.length)used=true;}
+    });
+    if(rows.length){out.push({t,color,rows,n:qi+1});}
+    qi++;
+  });
+  return out;
+}
+function selectedMaps(){
+  const s=new Set();
+  [...selected].map(id=>byId[id]).filter(Boolean).forEach(t=>Object.values(t.kit.maps).forEach(m=>{if(MAPCFG[m.norm])s.add(m.norm)}));
+  return [...s];
+}
+function openMap(norm){
+  const maps=selectedMaps(); if(!maps.length)return;
+  if(!norm||!maps.includes(norm))norm=maps[0];
+  $('#mapModal').classList.add('open');
+  $('#mtabs').innerHTML=maps.map(m=>`<button data-m="${m}" class="${m===norm?'on':''}">${esc(mapName(m))}</button>`).join('');
+  drawMap(norm);
+}
+function mapName(norm){for(const t of tasks){for(const [n,m] of Object.entries(t.kit.maps))if(m.norm===norm)return n;}return norm;}
+async function drawMap(norm){
+  const cfg=MAPCFG[norm]; curMap=norm;
+  if(leaf){leaf.remove();leaf=null;}
+  leaf=L.map('leaf',{crs:makeCRS(cfg),minZoom:cfg.minZoom||1,maxZoom:cfg.maxZoom||6,zoomSnap:0.5,attributionControl:true});
+  leaf.attributionControl.setPrefix('');
+  const bounds=B(cfg.bounds);
+  let base=null;
+  if(cfg.svgPath){
+    try{
+      const txt=await (await fetch(cfg.svgPath)).text();
+      if(curMap!==norm)return;
+      const el=document.createElementNS('http://www.w3.org/2000/svg','svg'); el.innerHTML=txt;
+      const inner=el.children[0]; el.setAttribute('viewBox',inner.getAttribute('viewBox'));
+      [...inner.children].forEach(g=>{if(g.nodeName==='g'&&g.id&&g.id!==cfg.svgLayer&&g.dataset.keepWithGroup!==cfg.svgLayer)g.style.display='none';});
+      base=L.svgOverlay(el,cfg.svgBounds?B(cfg.svgBounds):bounds,{attribution:'Map art: <a href="https://github.com/the-hideout/tarkov-dev-svg-maps" target="_blank">tarkov.dev SVG maps</a> (CC BY-NC-SA 4.0)'});
+    }catch(e){ base=L.imageOverlay(cfg.svgPath,cfg.svgBounds?B(cfg.svgBounds):bounds,{attribution:'Map art: tarkov.dev SVG maps (CC BY-NC-SA 4.0)'}); }
+  }
+  if(!base&&cfg.tilePath) base=L.tileLayer(cfg.tilePath,{tileSize:cfg.tileSize||256,bounds,attribution:'Map tiles: <a href="https://tarkov.dev" target="_blank">tarkov.dev</a>'});
+  if(base)base.addTo(leaf);
+  labelGroup=L.layerGroup((MAPLABELS[norm]||[]).map(([x,z,text,rot,size])=>L.marker([z,x],{interactive:false,keyboard:false,zIndexOffset:-100000,
+    icon:L.divIcon({className:'',iconSize:[0,0],html:`<div class="arealabel" style="font-size:${Math.round(15*(size||100)/100)}px;transform:translate(-50%,-50%) rotate(${rot||0}deg)">${esc(text)}</div>`})})));
+  if(showLabels)labelGroup.addTo(leaf);
+  $('#lblToggle').textContent=showLabels?'Labels: on':'Labels: off';
+  leaf.setMaxBounds(bounds.pad(0.5)); leaf.fitBounds(bounds);
+  // markers
+  const groups=mapPoints(norm); const all=[]; let html='';
+  groups.forEach(g=>{
+    html+=`<div class="lq"><span class="sw" style="background:${g.color}"></span>${g.n}. ${esc(g.t.name)}</div>`;
+    g.rows.forEach((r,ri)=>{
+      const id=`lo-${g.t.id}-${ri}`;
+      html+=`<div class="lo ${r.pts.length?'':'nopos'}" data-id="${id}" title="${r.pts.length?'Click to zoom':'No fixed location'}">${esc(r.o.description)}${r.pts.length?'':' <span class="small">(no fixed spot)</span>'}</div>`;
+      r.pts.forEach(pt=>{
+        const m=L.marker(LL(pt.pos),{icon:L.divIcon({className:'',html:`<div class="pin" style="background:${g.color}"><span>${g.n}</span></div>`,iconSize:[24,24],iconAnchor:[12,24],popupAnchor:[0,-22]})})
+          .bindPopup(`<b>${esc(g.t.name)}</b><br>${esc(r.o.description)}${pt.label?`<br><span style="opacity:.7">${esc(pt.label)}</span>`:''}${pt.pos.y!=null?`<br><span style="opacity:.7">height ${Math.round(pt.pos.y)}</span>`:''}`);
+        m.addTo(leaf); m._lo=id; all.push(m);
+        if(pt.outline?.length>2){L.polygon(pt.outline.map(LL),{color:g.color,weight:2,fillOpacity:.15}).addTo(leaf);}
+      });
+    });
+  });
+  $('#legend').innerHTML=html||'<p class="note">None of the selected quests have mapped objectives here.</p>';
+  $('#legend').onclick=e=>{const el=e.target.closest('.lo');if(!el)return;const ms=all.filter(m=>m._lo===el.dataset.id);if(!ms.length)return;
+    if(ms.length===1){leaf.flyTo(ms[0].getLatLng(),Math.min(leaf.getMaxZoom(),leaf.getZoom()+2));ms[0].openPopup();}else{leaf.fitBounds(L.featureGroup(ms).getBounds().pad(0.3));}};
+  if(all.length)leaf.fitBounds(L.featureGroup(all).getBounds().pad(0.25),{maxZoom:4});
+}
+$('#mtabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;document.querySelectorAll('#mtabs button').forEach(x=>x.classList.toggle('on',x===b));drawMap(b.dataset.m);});
+$('#lblToggle').addEventListener('click',()=>{showLabels=!showLabels;save('tqp.labels',showLabels);$('#lblToggle').textContent=showLabels?'Labels: on':'Labels: off';if(leaf&&labelGroup){showLabels?labelGroup.addTo(leaf):labelGroup.remove();}});
+$('#mclose').addEventListener('click',()=>{$('#mapModal').classList.remove('open');if(leaf){leaf.remove();leaf=null;}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#mapModal').classList.contains('open'))$('#mclose').click();});
+$('#kitBody').addEventListener('click',e=>{const b=e.target.closest('[data-showmap]');if(b)openMap(b.dataset.showmap);});
+$('#showMap').addEventListener('click',()=>openMap());
+
+// Events
+$('#list').addEventListener('click',e=>{
+  const q=e.target.closest('.quest');if(!q)return;const id=q.dataset.id;
+  if(e.target.closest('.eye')){if(hidden.has(id))hidden.delete(id);else{hidden.add(id);selected.delete(id);save('tqp.sel',[...selected]);}save('tqp.hidden',[...hidden]);render();return;}
+  if(e.target.matches('input[type=checkbox]')){e.target.checked?selected.add(id):selected.delete(id);save('tqp.sel',[...selected]);render();return;}
+  if(e.target.closest('.qname')||e.target.closest('.qmeta')||e.target.closest('.tags')){open.has(id)?open.delete(id):open.add(id);renderList();}
+});
+['#q','#trader','#mapf','#lvl','#sort'].forEach(s=>$(s).addEventListener('input',renderList));
+$('#chips').addEventListener('click',e=>{const c=e.target.closest('.chip');if(!c)return;const f=c.dataset.f;flags.has(f)?flags.delete(f):flags.add(f);c.classList.toggle('on');renderList();});
+$('#modeSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.dataset.mode===mode)return;mode=b.dataset.mode;save('tqp.mode',mode);document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x===b));fetchTasks();});
+$('#refresh').addEventListener('click',fetchTasks);
+$('#clear').addEventListener('click',()=>{selected.clear();save('tqp.sel',[]);render();});
+$('#addPre').addEventListener('click',()=>{
+  const stack=[...selected];
+  while(stack.length){const t=byId[stack.pop()];if(!t)continue;t.taskRequirements.forEach(r=>{if(r.status.includes('complete')&&!selected.has(r.task.id)&&!hidden.has(r.task.id)){selected.add(r.task.id);stack.push(r.task.id)}})}
+  save('tqp.sel',[...selected]);render();
+});
+$('#copy').addEventListener('click',()=>{
+  const txt=$('#kitBody').innerText.replace(/\n{3,}/g,'\n\n');
+  navigator.clipboard?.writeText(txt).then(()=>{$('#copy').textContent='Copied';setTimeout(()=>$('#copy').textContent='Copy list',1500)});
+});
+document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.mode===mode));
+$('#tmkey').value=load('tqp.tmkey','');
+$('#tmkey').addEventListener('change',()=>{try{localStorage.removeItem('tqp.tm.'+mode)}catch(e){};if(tasks.length)fetchTM();});
+fetchTasks();
+</script>
+</body>
+</html>
