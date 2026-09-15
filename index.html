@@ -177,6 +177,9 @@
     </div>
     <button class="btn" id="refresh">Refresh prices</button>
     <input id="tmkey" class="btn" style="width:210px" placeholder="Tarkov Market API key (optional)" aria-label="Tarkov Market API key">
+    <button class="btn" id="saveFile" title="Download your selected/hidden quests and hideout plan as a JSON file">Save progress</button>
+    <button class="btn" id="loadFile" title="Load a previously saved progress file">Load progress</button>
+    <input type="file" id="loadFileInput" accept="application/json" hidden aria-label="Load progress file">
     <span class="status" id="status">Loading quests…</span>
   </div>
 </header>
@@ -330,6 +333,31 @@ function load(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 selected=new Set(load('tqp.sel',[])); hidden=new Set(load('tqp.hidden',[])); mode=load('tqp.mode','regular');
 hideoutLevel=load('tqp.hlvl',{}); hideoutSel=new Set(load('tqp.hsel',[])); currentTab=load('tqp.tab','quests');
+
+// Progress save/load to a local file, since localStorage doesn't move between browsers or survive a cache clear
+function downloadSave(){
+  const data={app:'EFT Assistant',version:1,savedAt:new Date().toISOString(),
+    mode,selected:[...selected],hidden:[...hidden],hideoutLevel,hideoutSel:[...hideoutSel]};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=`eft-assistant-progress-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);a.click();a.remove();
+  URL.revokeObjectURL(url);
+}
+function applySave(data){
+  if(!data||typeof data!=='object'||!Array.isArray(data.selected))throw new Error('Not a valid EFT Assistant progress file');
+  const newMode=data.mode==='pve'?'pve':'regular';
+  const modeChanged=newMode!==mode;
+  mode=newMode;
+  selected=new Set(data.selected||[]); hidden=new Set(data.hidden||[]);
+  hideoutLevel=(data.hideoutLevel&&typeof data.hideoutLevel==='object')?data.hideoutLevel:{};
+  hideoutSel=new Set(data.hideoutSel||[]);
+  save('tqp.sel',[...selected]); save('tqp.hidden',[...hidden]); save('tqp.mode',mode);
+  save('tqp.hlvl',hideoutLevel); save('tqp.hsel',[...hideoutSel]);
+  document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.mode===mode));
+  if(modeChanged)fetchTasks(); else{render();if(currentTab==='hideout')renderHideoutList();}
+}
 
 function useData(list,when,fromCache){
   tasks=list; byId={}; tasks.forEach(t=>{byId[t.id]=t; t.kit=buildKit(t)});
@@ -909,6 +937,23 @@ $('#bchips').addEventListener('click',e=>{const c=e.target.closest('.chip');if(!
 $('#modeSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.dataset.mode===mode)return;mode=b.dataset.mode;save('tqp.mode',mode);document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x===b));fetchTasks();});
 $('#refresh').addEventListener('click',fetchTasks);
 $('#clear').addEventListener('click',()=>{selected.clear();save('tqp.sel',[]);render();});
+$('#saveFile').addEventListener('click',()=>{
+  downloadSave();
+  $('#saveFile').textContent='Saved ✓';
+  setTimeout(()=>$('#saveFile').textContent='Save progress',1500);
+});
+$('#loadFile').addEventListener('click',()=>$('#loadFileInput').click());
+$('#loadFileInput').addEventListener('change',e=>{
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{applySave(JSON.parse(reader.result));$('#loadFile').textContent='Loaded ✓';}
+    catch(err){$('#loadFile').textContent='Load failed';console.warn(err);}
+    setTimeout(()=>$('#loadFile').textContent='Load progress',1500);
+  };
+  reader.readAsText(file);
+  e.target.value='';
+});
 $('#showPre').addEventListener('click',()=>{
   prereqMode=!prereqMode;
   $('#showPre').classList.toggle('on',prereqMode);
