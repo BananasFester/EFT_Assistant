@@ -288,6 +288,14 @@
       </div>
     </div>
     <div id="traderLevels" style="margin-top:16px"></div>
+
+    <div class="hcard" style="max-width:360px;margin-top:16px;border-color:rgba(194,85,59,.5)">
+      <div class="hhead"><div class="hname" style="color:var(--rust)">Reset everything</div></div>
+      <div class="hbody">
+        <p class="note">Clears selected and hidden quests, your hideout plan, player level, and every trader's loyalty level. This can't be undone &mdash; use Save progress first if you want a backup.</p>
+        <button class="btn" id="resetProfile" style="border-color:var(--rust);color:var(--rust)">Reset everything</button>
+      </div>
+    </div>
   </section>
 
   <aside class="kit" id="kit">
@@ -381,6 +389,9 @@ function applySave(data){
   if($('#plevel'))$('#plevel').value=profileLevel||'';
   refreshLevelSelect();
   if(modeChanged)fetchTasks(); else{render();if(currentTab==='hideout')renderHideoutList();if(currentTab==='ammo')renderAmmo();if(currentTab==='barters')renderBarters();if(currentTab==='profile')renderProfile();}
+}
+function resetAll(){
+  applySave({selected:[],hidden:[],hideoutLevel:{},hideoutSel:[],profileLevel:0,traderLoyalty:{},mode});
 }
 
 function useData(list,when,fromCache){
@@ -1082,6 +1093,9 @@ $('#traderLevels').addEventListener('change',e=>{
   if(currentTab==='ammo')renderAmmo();
   if(currentTab==='barters')renderBarters();
   renderProfile();
+});
+$('#resetProfile').addEventListener('click',()=>{
+  if(confirm('Reset everything? This clears your selected/hidden quests, hideout plan, player level, and trader loyalty levels. This cannot be undone.'))resetAll();
 });
 refreshLevelSelect();
 switchTab(currentTab);
