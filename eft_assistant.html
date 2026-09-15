@@ -615,6 +615,19 @@ function renderKit(){
   $('#total').textContent=`${sel.length} quest${sel.length!==1?'s':''}${selH.length?` · ${selH.length} hideout upgrade${selH.length!==1?'s':''}`:''} · about ${rub(total)} to buy`;
 }
 function render(){renderList();renderKit();}
+// Hide the full chain of prior quests a selected quest implies are already done
+function hidePrereqs(id){
+  const stack=[id];
+  while(stack.length){
+    const t=byId[stack.pop()];if(!t)continue;
+    t.taskRequirements.forEach(r=>{
+      if(r.status.includes('complete')&&!hidden.has(r.task.id)){
+        hidden.add(r.task.id);selected.delete(r.task.id);
+        stack.push(r.task.id);
+      }
+    });
+  }
+}
 
 // ---------- Hideout tracker ----------
 function hideoutVisible(){
@@ -845,7 +858,11 @@ $('#showMap').addEventListener('click',()=>openMap());
 $('#list').addEventListener('click',e=>{
   const q=e.target.closest('.quest');if(!q)return;const id=q.dataset.id;
   if(e.target.closest('.eye')){if(hidden.has(id))hidden.delete(id);else{hidden.add(id);selected.delete(id);save('tqp.sel',[...selected]);}save('tqp.hidden',[...hidden]);render();return;}
-  if(e.target.matches('input[type=checkbox]')){e.target.checked?selected.add(id):selected.delete(id);save('tqp.sel',[...selected]);render();return;}
+  if(e.target.matches('input[type=checkbox]')){
+    if(e.target.checked){selected.add(id);hidePrereqs(id);save('tqp.hidden',[...hidden]);}
+    else{selected.delete(id);}
+    save('tqp.sel',[...selected]);render();return;
+  }
   if(e.target.closest('.qname')||e.target.closest('.qmeta')||e.target.closest('.tags')){open.has(id)?open.delete(id):open.add(id);renderList();}
 });
 ['#q','#trader','#mapf','#lvl','#sort'].forEach(s=>$(s).addEventListener('input',renderList));
