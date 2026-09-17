@@ -814,14 +814,25 @@ function fillAmmoSelect(){
   const cals=[...new Set(ammoItems.map(a=>a.ammo.caliber))].sort((a,b)=>calName(a).localeCompare(calName(b)));
   $('#acal').innerHTML='<option value="">All calibers</option>'+cals.map(c=>`<option value="${esc(c)}">${esc(calName(c))}</option>`).join('');
 }
+const HEAT_STOPS=[[194,85,59],[201,162,74],[141,179,106]]; // rust -> brass -> green
+function heatStyle(v,min,max){
+  if(v==null||max<=min)return '';
+  const t=Math.max(0,Math.min(1,(v-min)/(max-min)));
+  const seg=t<0.5?0:1, lt=t<0.5?t*2:(t-0.5)*2;
+  const [r1,g1,b1]=HEAT_STOPS[seg], [r2,g2,b2]=HEAT_STOPS[seg+1];
+  const r=Math.round(r1+(r2-r1)*lt), g=Math.round(g1+(g2-g1)*lt), b=Math.round(b1+(b2-b1)*lt);
+  return `background:rgba(${r},${g},${b},.32);color:#F2EFE3`;
+}
 function renderAmmo(){
   if(!ammoItems.length){$('#atbl').innerHTML='';$('#acount').textContent='Ammo data not loaded yet.';return;}
   if($('#acal').options.length<=1)fillAmmoSelect();
   const list=ammoVisible();
   $('#acount').textContent=`${list.length} rounds`;
+  const dmgs=list.map(a=>a.ammo.damage), pens=list.map(a=>a.ammo.penetrationPower);
+  const dmgMin=Math.min(...dmgs), dmgMax=Math.max(...dmgs), penMin=Math.min(...pens), penMax=Math.max(...pens);
   $('#atbl').innerHTML=`<thead><tr><th>Name</th><th>Caliber</th><th class="num">Dmg</th><th class="num">Pen</th><th class="num">Armor dmg</th><th class="num">Frag%</th><th class="num">Speed m/s</th><th class="num">Price</th></tr></thead><tbody>${list.map(a=>{
     const p=price(a);
-    return `<tr><td>${a.iconLink?`<img src="${esc(a.iconLink)}" alt="">`:''}<a href="${esc(a.link||a.wikiLink||'#')}" target="_blank" rel="noopener">${esc(a.name)}</a>${a.ammo.tracer?' <span class="small">●tracer</span>':''}</td><td>${esc(calName(a.ammo.caliber))}</td><td class="num">${a.ammo.damage}</td><td class="num">${a.ammo.penetrationPower}</td><td class="num">${a.ammo.armorDamage}</td><td class="num">${Math.round((a.ammo.fragmentationChance||0)*100)}%</td><td class="num">${a.ammo.initialSpeed}</td><td class="num">${p.best?rub(p.best):'—'} ${lockedTag(p)}</td></tr>`;
+    return `<tr><td>${a.iconLink?`<img src="${esc(a.iconLink)}" alt="">`:''}<a href="${esc(a.link||a.wikiLink||'#')}" target="_blank" rel="noopener">${esc(a.name)}</a>${a.ammo.tracer?' <span class="small">●tracer</span>':''}</td><td>${esc(calName(a.ammo.caliber))}</td><td class="num" style="${heatStyle(a.ammo.damage,dmgMin,dmgMax)}">${a.ammo.damage}</td><td class="num" style="${heatStyle(a.ammo.penetrationPower,penMin,penMax)}">${a.ammo.penetrationPower}</td><td class="num">${a.ammo.armorDamage}</td><td class="num">${Math.round((a.ammo.fragmentationChance||0)*100)}%</td><td class="num">${a.ammo.initialSpeed}</td><td class="num">${p.best?rub(p.best):'—'} ${lockedTag(p)}</td></tr>`;
   }).join('')}</tbody>`;
 }
 
