@@ -57,9 +57,11 @@
   .tag.locked{color:var(--rust);border-color:rgba(194,85,59,.5)}
   .btn.on{border-color:var(--brass);color:var(--brass)}
   .qrow{display:grid;grid-template-columns:28px minmax(0,1fr) auto 30px;gap:8px;align-items:center;padding:7px 10px}
-  .eye{background:transparent;border:0;color:var(--muted);font-size:18px;padding:2px 4px;border-radius:3px;line-height:1}
-  .eye:hover{color:var(--ink);background:var(--raised)}
-  .quest.hid{opacity:.6}
+  .donebtn{background:transparent;border:0;color:var(--muted);font-size:16px;font-weight:700;padding:2px 4px;border-radius:3px;line-height:1}
+  .donebtn:hover{color:var(--ink);background:var(--raised)}
+  .donebtn.on{color:var(--green)}
+  .quest.done{opacity:.6}
+  .quest.locked{opacity:.5}
   .qrow input{width:16px;height:16px;accent-color:var(--brass);margin:0}
   .qname{font-family:"Barlow Condensed";font-weight:600;font-size:19px;line-height:1.15;cursor:pointer}
   .qmeta{color:var(--muted);font-size:13px;margin-top:2px;display:flex;gap:10px;flex-wrap:wrap}
@@ -182,7 +184,7 @@
     </div>
     <button class="btn" id="refresh">Refresh prices</button>
     <input id="tmkey" class="btn" style="width:210px" placeholder="Tarkov Market API key (optional)" aria-label="Tarkov Market API key">
-    <button class="btn" id="saveFile" title="Download your selected/hidden quests and hideout plan as a JSON file">Save progress</button>
+    <button class="btn" id="saveFile" title="Download your selected/completed quests and hideout plan as a JSON file">Save progress</button>
     <button class="btn" id="loadFile" title="Load a previously saved progress file">Load progress</button>
     <input type="file" id="loadFileInput" accept="application/json" hidden aria-label="Load progress file">
     <span class="status" id="status">Loading quests…</span>
@@ -222,7 +224,8 @@
       <button class="chip" data-f="keys">Needs a key</button>
       <button class="chip" data-f="mark">Needs markers or tools</button>
       <button class="chip" data-f="selected">Selected only</button>
-      <button class="chip" data-f="hidden">Hidden (completed)</button>
+      <button class="chip" data-f="completed">Completed</button>
+      <button class="chip" data-f="locked">Locked (needs earlier quest)</button>
       <span class="count" id="count"></span>
     </div>
     <div id="list"><div class="empty">Fetching quest data…</div></div>
@@ -294,7 +297,7 @@
     <div class="hcard" style="max-width:360px;margin-top:16px;border-color:rgba(194,85,59,.5)">
       <div class="hhead"><div class="hname" style="color:var(--rust)">Reset everything</div></div>
       <div class="hbody">
-        <p class="note">Clears selected and hidden quests, your hideout plan, player level, and every trader's loyalty level. This can't be undone &mdash; use Save progress first if you want a backup.</p>
+        <p class="note">Clears selected and completed quests, your hideout plan, player level, and every trader's loyalty level. This can't be undone &mdash; use Save progress first if you want a backup.</p>
         <button class="btn" id="resetProfile" style="border-color:var(--rust);color:var(--rust)">Reset everything</button>
       </div>
     </div>
@@ -340,7 +343,7 @@ const QUERY=`query Tasks($mode:GameMode){ tasks(gameMode:$mode){
   finishRewards{ items{item{name} count} offerUnlock{trader{name} level item{name}} traderStanding{trader{name} standing} }
 }}`;
 
-let mode='regular', tasks=[], byId={}, selected=new Set(), flags=new Set(), open=new Set(), hidden=new Set();
+let mode='regular', tasks=[], byId={}, selected=new Set(), flags=new Set(), open=new Set(), completed=new Set();
 let prereqMode=false, highlightSet=new Set();
 let hideoutStations=[], hideoutById={}, hideoutLevel={}, hideoutSel=new Set(), hflags=new Set();
 let barters=[], ammoItems=[], bflags=new Set();
@@ -360,14 +363,15 @@ const calName=c=>CAL_NAMES[c]||String(c||'').replace(/^Caliber/,'');
 
 function load(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
-selected=new Set(load('tqp.sel',[])); hidden=new Set(load('tqp.hidden',[])); mode=load('tqp.mode','regular');
+selected=new Set(load('tqp.sel',[])); completed=new Set(load('tqp.hidden',[])); mode=load('tqp.mode','regular');
 hideoutLevel=load('tqp.hlvl',{}); hideoutSel=new Set(load('tqp.hsel',[])); currentTab=load('tqp.tab','quests');
 profileLevel=+load('tqp.level',0)||0; traderLoyalty=load('tqp.trll',{});
 
 // Progress save/load to a local file, since localStorage doesn't move between browsers or survive a cache clear
 function downloadSave(){
+  // Save-file field stays "hidden" so older saved-progress files remain compatible
   const data={app:'EFT Assistant',version:1,savedAt:new Date().toISOString(),
-    mode,selected:[...selected],hidden:[...hidden],hideoutLevel,hideoutSel:[...hideoutSel],profileLevel,traderLoyalty};
+    mode,selected:[...selected],hidden:[...completed],hideoutLevel,hideoutSel:[...hideoutSel],profileLevel,traderLoyalty};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -380,12 +384,12 @@ function applySave(data){
   const newMode=data.mode==='pve'?'pve':'regular';
   const modeChanged=newMode!==mode;
   mode=newMode;
-  selected=new Set(data.selected||[]); hidden=new Set(data.hidden||[]);
+  selected=new Set(data.selected||[]); completed=new Set(data.hidden||[]);
   hideoutLevel=(data.hideoutLevel&&typeof data.hideoutLevel==='object')?data.hideoutLevel:{};
   hideoutSel=new Set(data.hideoutSel||[]);
   profileLevel=+data.profileLevel||0;
   traderLoyalty=(data.traderLoyalty&&typeof data.traderLoyalty==='object')?data.traderLoyalty:{};
-  save('tqp.sel',[...selected]); save('tqp.hidden',[...hidden]); save('tqp.mode',mode);
+  save('tqp.sel',[...selected]); save('tqp.hidden',[...completed]); save('tqp.mode',mode);
   save('tqp.hlvl',hideoutLevel); save('tqp.hsel',[...hideoutSel]); save('tqp.level',profileLevel); save('tqp.trll',traderLoyalty);
   document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.mode===mode));
   if($('#plevel'))$('#plevel').value=profileLevel||'';
@@ -602,6 +606,10 @@ function fillSelects(){
   refreshLevelSelect();
 }
 
+// A quest is locked if it requires (as "complete") another real quest you haven't marked completed yet
+function lockedBy(t){
+  return t.taskRequirements.find(r=>r.status.includes('complete')&&byId[r.task.id]&&!completed.has(r.task.id));
+}
 function visible(){
   const q=$('#q').value.trim().toLowerCase(), tr=$('#trader').value, mp=$('#mapf').value, lv=+$('#lvl').value||99, sort=$('#sort').value;
   let list=tasks.filter(t=>{
@@ -613,7 +621,8 @@ function visible(){
     if(flags.has('keys')&&!Object.keys(t.kit.keys).length)return false;
     if(flags.has('mark')&&!Object.keys(t.kit.marks).length)return false;
     if(flags.has('selected')&&!selected.has(t.id))return false;
-    if(flags.has('hidden')?!hidden.has(t.id):(hidden.has(t.id)&&!highlightSet.has(t.id)))return false;
+    if(flags.has('completed')?!completed.has(t.id):(completed.has(t.id)&&!highlightSet.has(t.id)))return false;
+    if(flags.has('locked')?!lockedBy(t):(lockedBy(t)&&!selected.has(t.id)))return false;
     if(q){
       const hay=[t.name,t.trader.name,...Object.values(t.kit.keys).map(k=>k.item.name),...Object.values(t.kit.hand).map(h=>h.item.name),...Object.values(t.kit.marks).map(m=>m.item.name)].join(' ').toLowerCase();
       if(!hay.includes(q))return false;
@@ -643,7 +652,8 @@ function computeHighlight(){
 function renderList(){
   computeHighlight();
   const list=visible();
-  $('#count').textContent=`${list.length} shown · ${selected.size} selected · ${hidden.size} hidden`;
+  const lockedCount=tasks.filter(lockedBy).length;
+  $('#count').textContent=`${list.length} shown · ${selected.size} selected · ${completed.size} completed · ${lockedCount} locked`;
   if(!list.length){$('#list').innerHTML='<div class="empty">No quests match these filters.</div>';return;}
   $('#list').innerHTML=list.map(t=>{
     const k=t.kit, nk=Object.keys(k.keys).length, nm=Object.keys(k.marks).length;
@@ -654,17 +664,19 @@ function renderList(){
     if(t.lightkeeperRequired)tags.push('<span class="tag lk">Lightkeeper</span>');
     if(k.cost)tags.push(`<span class="tag">${rub(k.cost)}</span>`);
     if(highlightSet.has(t.id))tags.push('<span class="tag req">Needed first</span>');
+    const lockReq=lockedBy(t);
+    if(lockReq)tags.push(`<span class="tag locked">🔒 Needs: ${esc(lockReq.task.name)}</span>`);
     if(hasProfile()){
       const trReq=t.traderRequirements.find(r=>r.requirementType==='level'&&effectiveLL(r.trader.normalizedName)<r.value);
       if(trReq)tags.push(`<span class="tag locked">🔒 ${esc(trReq.trader.name)} LL${trReq.value}</span>`);
     }
-    return `<div class="quest ${selected.has(t.id)?'sel':''} ${open.has(t.id)?'open':''} ${hidden.has(t.id)?'hid':''} ${highlightSet.has(t.id)?'prereq':''}" data-id="${t.id}">
+    return `<div class="quest ${selected.has(t.id)?'sel':''} ${open.has(t.id)?'open':''} ${completed.has(t.id)?'done':''} ${lockReq?'locked':''} ${highlightSet.has(t.id)?'prereq':''}" data-id="${t.id}">
       <div class="qrow">
         <input type="checkbox" ${selected.has(t.id)?'checked':''} aria-label="Select ${esc(t.name)}">
         <div><div class="qname">${esc(t.name)}</div>
           <div class="qmeta"><span>${esc(t.trader.name)}</span><span>Lv ${t.minPlayerLevel||1}</span><span>${Object.keys(k.maps).join(', ')||'Any map'}</span><span>${t.experience.toLocaleString()} XP</span></div></div>
         <div class="tags">${tags.join('')}</div>
-        <button class="eye" data-eye="${t.id}" title="${hidden.has(t.id)?'Unhide this quest':'Hide this quest (completed)'}" aria-label="${hidden.has(t.id)?'Unhide':'Hide'} ${esc(t.name)}">${hidden.has(t.id)?'&#128065;&#65039;':'&#128065;'}</button>
+        <button class="donebtn ${completed.has(t.id)?'on':''}" data-complete="${t.id}" title="${completed.has(t.id)?'Mark incomplete':'Mark complete'}" aria-label="${completed.has(t.id)?'Mark incomplete':'Mark complete'}: ${esc(t.name)}">✓</button>
       </div>
       ${open.has(t.id)?detail(t):'<div class="qbody"></div>'}
     </div>`;
@@ -736,14 +748,14 @@ function renderKit(){
   $('#total').textContent=`${sel.length} quest${sel.length!==1?'s':''}${selH.length?` · ${selH.length} hideout upgrade${selH.length!==1?'s':''}`:''} · about ${rub(total)} to buy`;
 }
 function render(){renderList();renderKit();}
-// Hide the full chain of prior quests a selected quest implies are already done
+// Mark the full chain of prior quests as completed, since selecting a quest implies you've already done its prerequisites
 function hidePrereqs(id){
   const stack=[id];
   while(stack.length){
     const t=byId[stack.pop()];if(!t)continue;
     t.taskRequirements.forEach(r=>{
-      if(r.status.includes('complete')&&!hidden.has(r.task.id)){
-        hidden.add(r.task.id);selected.delete(r.task.id);
+      if(r.status.includes('complete')&&!completed.has(r.task.id)){
+        completed.add(r.task.id);selected.delete(r.task.id);
         stack.push(r.task.id);
       }
     });
@@ -1031,9 +1043,9 @@ $('#showMap').addEventListener('click',()=>openMap());
 // Events
 $('#list').addEventListener('click',e=>{
   const q=e.target.closest('.quest');if(!q)return;const id=q.dataset.id;
-  if(e.target.closest('.eye')){if(hidden.has(id))hidden.delete(id);else{hidden.add(id);selected.delete(id);save('tqp.sel',[...selected]);}save('tqp.hidden',[...hidden]);render();return;}
+  if(e.target.closest('.donebtn')){if(completed.has(id))completed.delete(id);else{completed.add(id);selected.delete(id);save('tqp.sel',[...selected]);}save('tqp.hidden',[...completed]);render();return;}
   if(e.target.matches('input[type=checkbox]')){
-    if(e.target.checked){selected.add(id);hidePrereqs(id);save('tqp.hidden',[...hidden]);}
+    if(e.target.checked){selected.add(id);hidePrereqs(id);save('tqp.hidden',[...completed]);}
     else{selected.delete(id);}
     save('tqp.sel',[...selected]);render();return;
   }
@@ -1108,7 +1120,7 @@ $('#traderLevels').addEventListener('change',e=>{
   renderProfile();
 });
 $('#resetProfile').addEventListener('click',()=>{
-  if(confirm('Reset everything? This clears your selected/hidden quests, hideout plan, player level, and trader loyalty levels. This cannot be undone.'))resetAll();
+  if(confirm('Reset everything? This clears your selected/completed quests, hideout plan, player level, and trader loyalty levels. This cannot be undone.'))resetAll();
 });
 refreshLevelSelect();
 switchTab(currentTab);
